@@ -53,7 +53,6 @@ def test_empty_structured_information_skips_verification() -> None:
                 case_id="empty-case",
                 内容主题="没有可核验主张",
                 原子主张=[],
-                新闻事实=[],
                 隐性观点=[],
             )
         )
@@ -71,7 +70,6 @@ def test_verify_endpoint_persists_result_to_requested_cache(monkeypatch) -> None
         "case_id": "cached-case",
         "内容主题": "缓存核验测试",
         "原子主张": ["这是一条用于验证缓存写回行为的完整中文主张"],
-        "新闻事实": [],
         "隐性观点": [],
     }
     stored = {
@@ -79,7 +77,6 @@ def test_verify_endpoint_persists_result_to_requested_cache(monkeypatch) -> None
             "case_id": "cached-case",
             "content_topic": "缓存核验测试",
             "atomic_claims": ["这是一条用于验证缓存写回行为的完整中文主张"],
-            "news_facts": [],
             "implicit_opinions": [],
         }
     }

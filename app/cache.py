@@ -10,8 +10,8 @@ from typing import Any
 
 
 class ResultCache:
-    SCHEMA_VERSION = "structured-information-v3"
-    PIPELINE_VERSION = "lossless-fulltext-v1"
+    SCHEMA_VERSION = "structured-information-v4"
+    PIPELINE_VERSION = "atomic-claims-only-v1"
 
     def __init__(self, ttl_seconds: int) -> None:
         cache_dir = Path(".cache")

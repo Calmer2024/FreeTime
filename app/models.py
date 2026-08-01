@@ -54,12 +54,9 @@ class StructuredInformation(BaseModel):
     case_id: str = Field(pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
     content_topic: str = Field(alias="内容主题", min_length=1, max_length=200)
     atomic_claims: list[StructuredSentence] = Field(alias="原子主张")
-    news_facts: list[StructuredSentence] = Field(alias="新闻事实")
     implicit_opinions: list[StructuredSentence] = Field(alias="隐性观点")
 
-    @field_validator(
-        "atomic_claims", "news_facts", "implicit_opinions", mode="before"
-    )
+    @field_validator("atomic_claims", "implicit_opinions", mode="before")
     @classmethod
     def normalize_items(cls, value: object) -> object:
         if not isinstance(value, list):
@@ -140,7 +137,7 @@ class CoverageInfo(BaseModel):
 
 
 class AnalyzeResponse(BaseModel):
-    protocol_version: Literal["structured-information-v3"] = "structured-information-v3"
+    protocol_version: Literal["structured-information-v4"] = "structured-information-v4"
     request_id: str
     cached: bool
     strategy: Literal["subtitle", "asr", "visual", "hybrid", "metadata"]
@@ -153,8 +150,13 @@ class AnalyzeResponse(BaseModel):
     transcript_excerpt: str | None = None
     transcript_chars: int = 0
     full_source_text: str | None = None
+    structured_input_text: str = ""
+    structured_input_chars: int = 0
+    structured_input_truncated: bool = False
     cleaned_article: str = ""
     timings: list[StageTiming] = Field(default_factory=list)
+    extraction_milliseconds: int = 0
+    full_pipeline_milliseconds: int = 0
     estimated_cost_cny: float = 0
     coverage: CoverageInfo = Field(
         default_factory=lambda: CoverageInfo(status="metadata_only")
@@ -166,7 +168,6 @@ class AnalyzeResponse(BaseModel):
             case_id="unstructured",
             content_topic="未识别内容主题",
             atomic_claims=[],
-            news_facts=[],
             implicit_opinions=[],
         )
     )

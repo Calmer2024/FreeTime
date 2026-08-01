@@ -76,7 +76,6 @@ def _structured_information_from_model_result(
         "case_id",
         "内容主题",
         "原子主张",
-        "新闻事实",
         "隐性观点",
     }
     return StructuredInformation.model_validate(
@@ -1088,7 +1087,6 @@ def _local_structured_information(
         case_id=f"case-{case_hash}",
         content_topic=title.strip() or "未识别内容主题",
         atomic_claims=[],
-        news_facts=[],
         implicit_opinions=[],
     )
 
@@ -1241,7 +1239,6 @@ def _structured_reading_result(
 ) -> tuple[str, list[str], list[str]]:
     sections = [
         *structured.atomic_claims,
-        *structured.news_facts,
         *structured.implicit_opinions,
     ]
     topic = re.sub(r"\s+", " ", structured.content_topic).strip()
@@ -1291,6 +1288,7 @@ def _timing(name: str, started: float) -> StageTiming:
 
 
 async def analyze(url: str, mode: str) -> AnalyzeResponse:
+    pipeline_started = time.perf_counter()
     timings: list[StageTiming] = []
     cost_trace = [
         CostStep(
@@ -1405,6 +1403,9 @@ async def analyze(url: str, mode: str) -> AnalyzeResponse:
             full_source_text=source_text or None,
             cleaned_article=cleaned_article,
             timings=timings,
+            extraction_milliseconds=round(
+                (time.perf_counter() - pipeline_started) * 1000
+            ),
             coverage=coverage,
             structured_data=structured,
             extraction_plan=ExtractionPlan(
@@ -1677,7 +1678,6 @@ async def analyze(url: str, mode: str) -> AnalyzeResponse:
         critical_gaps.append("事件型视频的全视频多模态补充未完成")
     structured_count = (
         len(structured.atomic_claims)
-        + len(structured.news_facts)
         + len(structured.implicit_opinions)
     )
     if structured_conversion_degraded:
@@ -1700,8 +1700,7 @@ async def analyze(url: str, mode: str) -> AnalyzeResponse:
     coverage_note = (
         f"语音覆盖 {audio_coverage:.1f}%；"
         f"全文重组保留 {text_retention:.1f}%；{visual_coverage_note}；"
-        f"结构化输出包含 {len(structured.atomic_claims)} 条原子主张、"
-        f"{len(structured.news_facts)} 条新闻事实和"
+        f"结构化输出包含 {len(structured.atomic_claims)} 条原子主张和"
         f"{len(structured.implicit_opinions)} 条隐性观点。"
     )
     if structured_conversion_degraded:
@@ -1773,8 +1772,18 @@ async def analyze(url: str, mode: str) -> AnalyzeResponse:
         transcript_excerpt=transcript[:5000] if transcript else None,
         transcript_chars=len(transcript),
         full_source_text=combined_input,
+        structured_input_text=combined_input[: settings.max_transcript_chars],
+        structured_input_chars=min(
+            len(combined_input), settings.max_transcript_chars
+        ),
+        structured_input_truncated=(
+            len(combined_input) > settings.max_transcript_chars
+        ),
         cleaned_article=cleaned_article,
         timings=timings,
+        extraction_milliseconds=round(
+            (time.perf_counter() - pipeline_started) * 1000
+        ),
         estimated_cost_cny=round(estimated_cost, 5),
         coverage=CoverageInfo(
             status=coverage_status,

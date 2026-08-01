@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -29,7 +30,7 @@ from app.trust.service import verify_structured_information
 
 app = FastAPI(
     title="MiMo Trust Video Information Extraction Demo",
-    version="0.3.0",
+    version="0.4.0",
     docs_url="/api/docs",
 )
 cache = ResultCache(settings.cache_ttl_seconds)
@@ -40,9 +41,17 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 def _ensure_cleaned_article(payload: dict[str, object]) -> dict[str, object]:
     metadata = payload.get("metadata")
     metadata_dict = metadata if isinstance(metadata, dict) else {}
+    full_source_text = str(payload.get("full_source_text") or "")
+    if not payload.get("structured_input_text") and full_source_text:
+        structured_input = full_source_text[: settings.max_transcript_chars]
+        payload["structured_input_text"] = structured_input
+        payload["structured_input_chars"] = len(structured_input)
+        payload["structured_input_truncated"] = (
+            len(full_source_text) > settings.max_transcript_chars
+        )
     if not payload.get("cleaned_article"):
         payload["cleaned_article"] = _clean_source_article(
-            str(payload.get("full_source_text") or ""),
+            full_source_text,
             str(metadata_dict.get("title") or ""),
         )
     structured_payload = payload.get("structured_data")
@@ -68,12 +77,13 @@ async def health() -> dict[str, object]:
         "mimo_configured": bool(settings.mimo_api_key),
         "supported_platforms": ["抖音", "哔哩哔哩", "YouTube"],
         "accepted_inputs": ["完整 URL", "平台短链", "手机分享文本"],
-        "extraction_protocol": "structured-information-v3",
+        "extraction_protocol": "structured-information-v4",
     }
 
 
 @app.post("/api/analyze", response_model=AnalyzeResponse)
 async def analyze_video(request: AnalyzeRequest) -> AnalyzeResponse:
+    request_started = time.perf_counter()
     try:
         url = await asyncio.to_thread(resolve_video_input, request.url)
     except UnsafeUrlError as exc:
@@ -97,6 +107,20 @@ async def analyze_video(request: AnalyzeRequest) -> AnalyzeResponse:
                         "status": "failed",
                         "message": str(exc),
                     }
+            if not cached_result.extraction_milliseconds:
+                cached_result.extraction_milliseconds = sum(
+                    item.milliseconds for item in cached_result.timings
+                )
+            verification_seconds = float(
+                ((cached_result.verification or {}).get("timings") or {}).get(
+                    "total_seconds", 0
+                )
+            )
+            if not cached_result.full_pipeline_milliseconds:
+                cached_result.full_pipeline_milliseconds = (
+                    cached_result.extraction_milliseconds
+                    + round(verification_seconds * 1000)
+                )
             return cached_result
 
     try:
@@ -114,6 +138,9 @@ async def analyze_video(request: AnalyzeRequest) -> AnalyzeResponse:
                 "status": "failed",
                 "message": str(exc),
             }
+    result.full_pipeline_milliseconds = round(
+        (time.perf_counter() - request_started) * 1000
+    )
     cache.set(cache_key, result.model_dump(mode="json"))
     return result
 
@@ -132,6 +159,22 @@ async def verify_claims(request: VerifyRequest) -> dict[str, object]:
             if cached_structured.case_id != request.structured_data.case_id:
                 raise HTTPException(status_code=409, detail="核验案例与缓存记录不匹配")
             cached["verification"] = result
+            extraction_milliseconds = int(
+                cached.get("extraction_milliseconds")
+                or sum(
+                    int(item.get("milliseconds") or 0)
+                    for item in cached.get("timings", [])
+                    if isinstance(item, dict)
+                )
+            )
+            verification_milliseconds = round(
+                float((result.get("timings") or {}).get("total_seconds") or 0)
+                * 1000
+            )
+            cached["extraction_milliseconds"] = extraction_milliseconds
+            cached["full_pipeline_milliseconds"] = (
+                extraction_milliseconds + verification_milliseconds
+            )
             cache.set(request.cache_key, cached)
         return result
     except HTTPException:

@@ -5,7 +5,7 @@ pipeline_demo.py  —  MimoTrust 信源核验全流程端到端 PipeLine 脚本
   1. 输入阶段 : 从 --input 读取通用案例 JSON
   2. 节点一 : 调用 MiMo LLM 生成网页、学术与百科检索计划
   3. 节点二 : 并发调用 Exa、OpenAlex、ArXiv、Wikipedia 等检索轨道
-  4. 节点三 : 逐项核验原子主张、新闻事实和隐性观点
+  4. 节点三 : 逐项核验原子主张和隐性观点
   5. 每次运行在 data/cases/<case_id>/runs/<run_id>/ 保存完整中间产物
 
 【运行条件】
@@ -36,7 +36,7 @@ from app.trust.evidence_policy import (
     find_contract_satisfying_sources,
     has_decisive_source,
     has_propagation_evidence,
-    has_sufficient_news_evidence,
+    has_sufficient_event_evidence,
     is_unstated_exclusivity_nitpick,
     profile_evidence_collection,
     requires_independent_corroboration,
@@ -212,7 +212,7 @@ def _unique_strings(values: Any, limit: int) -> List[str]:
 def target_web_query_count(case_input: Dict[str, Any]) -> int:
     claim_count = sum(
         len(case_input.get(key, []))
-        for key in ("原子主张", "新闻事实", "隐性观点")
+        for key in ("原子主张", "隐性观点")
     )
     return min(8, max(5, claim_count + 2))
 
@@ -224,7 +224,6 @@ def fallback_web_queries(
     topic = case_input.get("内容主题") or "该事件"
     claims = [
         *case_input.get("原子主张", []),
-        *case_input.get("新闻事实", []),
         *case_input.get("隐性观点", []),
     ]
     candidates = [f"{claim} 权威来源 事实核查" for claim in claims]
@@ -367,7 +366,7 @@ async def step1_construct_search_plan(
     system_prompt = (
         "你是信息检索与事实核查专家。根据任意领域的结构化案例，生成通用检索计划。\n"
         "【输出要求】\n"
-        f"1. web_queries 必须恰好{query_limit}条中文自然语言查询，覆盖每一条原子主张、新闻事实和隐性观点。"
+        f"1. web_queries 必须恰好{query_limit}条中文自然语言查询，覆盖每一条原子主张和隐性观点。"
         "所有查询会一次性并发执行，不设计后续补搜。\n"
         f"2. 当前年份是{current_year}年。必须把‘今年、去年、往年、近日’解析成明确年份或时间范围，不能自行跳到无关年份。\n"
         "3. 至少一半网页查询用于寻找主管机构、原始公告、原始数据、法规原文、研究原文或一手通报。"
@@ -378,7 +377,7 @@ async def step1_construct_search_plan(
         "医学或科学主张必须搜索作用机制、权威机构和同行评议证据。\n"
         "6. academic_queries 提供0至2条英文查询，仅在学术证据有价值时生成。\n"
         "7. encyclopedia_topics 提供0至3个百科实体，language 使用 zh 或 en。\n"
-        "8. query_targets 必须覆盖全部web_queries；claim_ids使用A1/N1/I1格式；intent使用primary_source或verification。\n"
+        "8. query_targets 必须覆盖全部web_queries；claim_ids使用A1/I1格式；intent使用primary_source或verification。\n"
         "9. evidence_contracts 必须逐项分析全部claim_id。claim_type从general_factual、current_event、historical_event、"
         "reported_claim、award_record、quantitative、quantitative_comparison、causal、legal、medical_scientific、"
         "interpretive_claim、context_integrity中选择。numeric_roles从year、date、amount、count、rate、rank、measurement、identifier中选择；"
@@ -388,7 +387,7 @@ async def step1_construct_search_plan(
         "10. 对‘网传称/视频称/有报道称’区分两件事：传播内容是否存在，以及内容本身是否真实；历史事件不套用突发新闻的双媒体门槛。\n"
         "reported_claim只用于‘某帖子、传言或报道是否确实存在/传播’这一元主张。句子即使提到‘研究表明、论文发表、机构称’，"
         "只要核验目标是研究结论或事实内容本身，就不能标为reported_claim。\n"
-        "新闻事实只是输入分组，不代表事情发生在近期。人物生平、科学实验、发现过程、获奖经历等科学史或传记事件，"
+        "人物生平、科学实验、发现过程、获奖经历等科学史或传记事件，"
         "即使句子没有写年份，也应标为historical_event，并至少安排一条原始论文、当事人记录或权威历史资料查询。\n"
         "11. 不得引入输入中不存在的领域、对象或案例。reasoning 不超过120个汉字。\n"
         "12. 只输出以下 JSON，不要输出 Markdown：\n"
@@ -739,7 +738,6 @@ def build_claim_items(case_input: Dict[str, Any]) -> List[Dict[str, str]]:
     claim_items = []
     groups = (
         ("A", "原子主张", case_input.get("原子主张", [])),
-        ("N", "新闻事实", case_input.get("新闻事实", [])),
         ("I", "隐性观点", case_input.get("隐性观点", [])),
     )
     for prefix, category, claims in groups:
@@ -791,7 +789,7 @@ def normalize_report_data(
     }
 
     normalized_checks = []
-    news_verification_failed = False
+    event_verification_failed = False
     allowed_verdicts = {
         "捏造",
         "虚假",
@@ -904,10 +902,8 @@ def normalize_report_data(
         if verdict in strong_verdicts and not has_decisive:
             verdict = "缺乏证据"
             basis = "缺少能够直接支持强判定的权威直接证据。"
-        news_requires_corroboration = expected["category"] == "新闻事实" and (
-            contract is None or requires_independent_corroboration(contract)
-        )
-        if news_requires_corroboration and not has_sufficient_news_evidence(
+        event_requires_corroboration = requires_independent_corroboration(contract)
+        if event_requires_corroboration and not has_sufficient_event_evidence(
             valid_source_ids,
             evidence_by_id,
             claim_id=expected["claim_id"],
@@ -917,7 +913,7 @@ def normalize_report_data(
                 basis = (
                     "现有依据仅为非官方或可能转载的报道，缺少官方通报或两个可确认独立的权威来源。"
                 )
-            news_verification_failed = True
+            event_verification_failed = True
 
         contract_flags = set(contract.get("risk_flags", [])) if contract else set()
         requires_strict_contract = bool(
@@ -974,11 +970,11 @@ def normalize_report_data(
         "claim_checks": normalized_checks,
         "uncertainties": [str(item) for item in uncertainties[:3] if item],
     }
-    if news_verification_failed:
-        news_uncertainty = "新闻事件缺少官方通报或可确认独立的一手权威来源。"
-        if news_uncertainty not in normalized["uncertainties"]:
+    if event_verification_failed:
+        event_uncertainty = "事件主张缺少官方通报或可确认独立的一手权威来源。"
+        if event_uncertainty not in normalized["uncertainties"]:
             normalized["uncertainties"] = (
-                [news_uncertainty, *normalized["uncertainties"]]
+                [event_uncertainty, *normalized["uncertainties"]]
             )[:3]
     verdict_counts = Counter(item["verdict"] for item in normalized_checks)
     verdict_order = (
@@ -1175,7 +1171,7 @@ async def step4_generate_report(
         f"{REPORT_RISK_POSTURE_PROMPT}"
         "可以使用常识理解术语、时间、来源身份和语义边界，"
         "但事实判定只能依据本次给定证据，不得用模型记忆补充缺失事实或替代引用。"
-        "必须按照claim_id逐项核验全部原子主张、新闻事实和隐性观点，不回避明确结论。"
+        "必须按照claim_id逐项核验全部原子主张和隐性观点，不回避明确结论。"
         "候选中的semantic_assessment已由全量初筛给出来源角色、claim关系和直接性；"
         "请复核其与摘要是否一致，只为实际引用来源输出紧凑source_labels。"
         "self_media和commentary只能说明说法正在传播，不能作为事实结论的关键依据。"
@@ -1186,7 +1182,7 @@ async def step4_generate_report(
         "不得把一个对象、剂量、暴露途径、地区或时间的证据外推到另一个对象。机制证据不能单独证明实际事件。"
         "医学健康主张优先使用官方卫生机构、毒理资料和同行评议研究；法规主张必须核对官方文本、管辖地区、"
         "适用场景和有效状态，‘多地规定’至少需要两个不同地区的官方直接证据，否则只能部分支持或证据不足。"
-        "新闻事实不得因为搜到一篇描述相同的文章就判为属实。匿名、缺少时间地点、没有原始采访或只有聚合转载的事件应判为‘待核实’；"
+        "事件主张不得因为搜到一篇描述相同的文章就判为属实。匿名、缺少时间地点、没有原始采访或只有聚合转载的事件应判为‘待核实’；"
         "判为属实至少需要一个直接官方来源，或两个来源域名不同、内容不重复的T1权威媒体来源。多个循环转载不算独立证据。"
         "但historical_event可以由原始论文、当事人记录或权威历史资料直接证明；reported_claim只核验相关说法是否实际传播，"
         "不能把‘存在这条网传内容’偷换成‘网传内容本身属实’。"

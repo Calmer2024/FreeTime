@@ -187,9 +187,9 @@ def _claim_risk_flags(claim: str, current_year: int) -> list[str]:
 def _claim_type(category: str, claim: str, risk_flags: list[str]) -> str:
     if re.search(r"诺贝尔|获奖|奖项|授予.{0,12}奖|荣获", claim):
         return "award_record"
-    if category == "新闻事实" and "reported_claim" in risk_flags:
+    if "reported_claim" in risk_flags:
         return "reported_claim"
-    if category == "新闻事实" and "historical" in risk_flags:
+    if "historical" in risk_flags:
         return "historical_event"
     if "quantified" in risk_flags and "comparative" in risk_flags:
         return "quantitative_comparison"
@@ -199,7 +199,7 @@ def _claim_type(category: str, claim: str, risk_flags: list[str]) -> str:
         return "medical_scientific"
     if category == "隐性观点":
         return "interpretive_claim"
-    if category == "新闻事实" or "relative_time" in risk_flags:
+    if "relative_time" in risk_flags:
         return "current_event"
     if "causal" in risk_flags:
         return "causal"
@@ -720,7 +720,7 @@ def _normalized_source_text(source: dict[str, Any]) -> str:
     return re.sub(r"[^0-9a-z\u4e00-\u9fff]+", "", text)[:800]
 
 
-def has_sufficient_news_evidence(
+def has_sufficient_event_evidence(
     source_ids: list[str],
     evidence_by_id: dict[str, dict[str, Any]],
     claim_id: str | None = None,

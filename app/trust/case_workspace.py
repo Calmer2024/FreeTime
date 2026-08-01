@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 
-CASE_LIST_FIELDS = ("原子主张", "新闻事实", "隐性观点")
+CASE_LIST_FIELDS = ("原子主张", "隐性观点")
 
 
 def validate_case_input(raw_data: Any) -> dict[str, Any]:
@@ -25,7 +25,7 @@ def validate_case_input(raw_data: Any) -> dict[str, Any]:
         data[field] = [item.strip() for item in value if item.strip()]
 
     if not any(data[field] for field in CASE_LIST_FIELDS):
-        raise ValueError("原子主张、新闻事实、隐性观点至少需要提供一项")
+        raise ValueError("原子主张、隐性观点至少需要提供一项")
 
     topic = data.get("内容主题", "")
     if topic is not None and not isinstance(topic, str):

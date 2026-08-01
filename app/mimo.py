@@ -35,16 +35,6 @@ STRUCTURED_INFORMATION_SCHEMA: dict[str, Any] = {
             },
             "uniqueItems": True,
         },
-        "新闻事实": {
-            "type": "array",
-            "items": {
-                "type": "string",
-                "minLength": 8,
-                "maxLength": 300,
-                "pattern": r".*[\u4e00-\u9fff].*",
-            },
-            "uniqueItems": True,
-        },
         "隐性观点": {
             "type": "array",
             "items": {
@@ -56,7 +46,7 @@ STRUCTURED_INFORMATION_SCHEMA: dict[str, Any] = {
             "uniqueItems": True,
         },
     },
-    "required": ["case_id", "内容主题", "原子主张", "新闻事实", "隐性观点"],
+    "required": ["case_id", "内容主题", "原子主张", "隐性观点"],
     "additionalProperties": False,
 }
 
@@ -90,7 +80,7 @@ def _structured_response_format() -> dict[str, Any]:
     return {
         "type": "json_schema",
         "json_schema": {
-            "name": "mimo_trust_information_v3",
+            "name": "mimo_trust_information_v4",
             "strict": True,
             "schema": STRUCTURED_INFORMATION_SCHEMA,
         },
@@ -124,7 +114,7 @@ def _validate_structured_result(result: dict[str, Any]) -> dict[str, Any]:
         normalized_case_id = f"case-{digest}"
     normalized["case_id"] = normalized_case_id
 
-    for field_name in ("原子主张", "新闻事实", "隐性观点"):
+    for field_name in ("原子主张", "隐性观点"):
         if field_name not in normalized or normalized[field_name] is None:
             normalized[field_name] = []
         elif isinstance(normalized[field_name], str):
@@ -154,7 +144,7 @@ def _structured_quality_issues(result: dict[str, Any]) -> list[str]:
     """Detect fragmentation risk without imposing a result-count limit."""
     issues: list[str] = []
     anaphora = re.compile(r"^(?:这|这些|该|其|上述|前述|后者|其中)")
-    for field_name in ("原子主张", "新闻事实"):
+    for field_name in ("原子主张",):
         items = [
             re.sub(r"\s+", "", str(item))
             for item in result.get(field_name, [])
@@ -199,6 +189,19 @@ def _structured_quality_issues(result: dict[str, Any]) -> list[str]:
                     numeric_owners[number] = index
             if duplicated_numbers:
                 issues.append("原子主张跨条重复同一关键数字，可能存在错误归并")
+    for claim in result.get("原子主张", []):
+        text = str(claim)
+        describes_speaker = re.search(r"说话者|发布者|作者|视频.{0,8}(?:博主|主播|创作者)", text)
+        describes_pragmatics = re.search(
+            r"反讽|真实立场|字面(?:赞扬|崇拜|褒义)|语气|态度|隐含|"
+            r"(?:表达|表示).{0,12}(?:质疑|讽刺|崇拜|赞扬)",
+            text,
+        )
+        if describes_speaker and describes_pragmatics:
+            issues.append(
+                "原子主张包含作者语气、反讽或真实立场判断，应移入隐性观点"
+            )
+            break
     return issues
 
 
@@ -245,7 +248,7 @@ async def _repair_structured_json(content: str, reason: str) -> dict[str, Any]:
                 "role": "user",
                 "content": (
                     f"失败原因：{reason or 'JSON 语法或结构错误'}。\n"
-                    "请把下面候选结果修复为 mimo_trust_information_v3。"
+                    "请把下面候选结果修复为 mimo_trust_information_v4。"
                     "若文本被截断，只保留已经完整出现的信息：\n"
                     f"{content[:24_000]}"
                 ),
@@ -290,12 +293,16 @@ async def _recompress_structured_result(
                     "请重新按同一主体、事件链和证据检索任务聚类。"
                     "同一资金链的筹集方式、金额、用途和直接结果应合成自足命题；"
                     "只有不同主体、不同核心事件或不同核验路径才拆分。"
-                    "动机、问题背景和常识说明放入新闻事实或删除，不要作为原子主张，"
-                    "除非它本身就是内容标题和结论要求核验的中心。"
+                    "动机、问题背景和常识说明应删除，不要作为原子主张，"
+                    "除非它本身就是内容标题和结论要求核验的中心事实。"
                     "同一长期行动的实施方式、累计成果、资金用途和直接受益结果"
                     "属于一个核验事件簇，必须合成一条，不得各列一条。"
                     "不得为了压缩改变事实归属：长期累计金额不能挂到某次具体活动，"
                     "同一数字或结果不得在多条主张中重复。"
+                    "必须保留原结果中对反讽、反问、夸张和字面褒义与真实立场相反的"
+                    "语用判断；不得把反讽式赞扬改写成作者真实赞扬。"
+                    "描述作者态度、语气、反讽、质疑意图或真实立场的条目必须放入"
+                    "隐性观点，不得留在原子主张。"
                     "具体活动只保留该场景明确发生的行为和目的；长期行动另行合并"
                     "主要实施方式、累计成果、用途与直接结果。"
                     "例如碎片“长期通过B累计X”和“X用于Y”必须改写为"
@@ -342,12 +349,20 @@ async def structure_information(
 ) -> dict[str, Any]:
     recommended_density = _recommended_claim_density(source_text, metadata)
     prompt = f"""
-将原文压缩为供下游信源核实使用的 structured-information-v3。忠于输入，
+将原文压缩为供下游信源核实使用的 structured-information-v4。忠于输入，
 不补充外部知识，不判断真假。
 
 建议核心原子主张信息密度为 {recommended_density} 条；这不是上限。如果存在
 额外条目，只有当删除它会遗漏独立核心事件、改变核心结论或需要不同核验路径时
 才保留；否则必须与同一事件合并或删除。
+
+先执行语用核对，再做事实结构化：
+- 识别反讽、反问、夸张、戏仿，以及字面褒义与真实立场相反的表达；
+- 必须综合标题、话题标签、体裁标签、前后文矛盾、法律或安全性质疑、反问句和结尾照应；
+- 若存在反讽，隐性观点必须表达作者真正批评或质疑的对象，并在同一句中简述判断线索；
+- 描述作者态度、语气、反讽、质疑意图或真实立场的内容只能放入隐性观点；
+- 如果文本线索不足以确定真实立场，必须明确表述不确定性，不得编造确定态度；
+- 反讽式话语不能作为事实性原子主张重复输出，但话语中被质疑的法律、数量、时间和事件命题仍应分别提取。
 
 先按事件和证据检索路径聚类，再按重要性排序：
 - 原子主张是最小充分、自足的核验任务，不是单谓语。同一长期行动的实施方式、
@@ -355,9 +370,10 @@ async def structure_information(
   事件另列。不得为了满足建议密度改变时间、主体或因果归属：长期累计结果不能
   挂到某次具体活动，同一个数字或结果不得跨条重复。动机背景、普通知识和重复
   步骤不列为原子主张。
-- 新闻事实按独立事件综合叙述，不拆成流水账；表示内容声称，不代表已经核真。
+- 所有值得外部核验的事实性陈述都统一放入原子主张，不另设新闻事实或背景事实字段。
+  仅用于铺垫、且不影响核心结论的背景应删除；不得输出 Schema 之外的字段。
 - 隐性观点只保留有充分依据且影响叙事导向的核心潜台词；同义合并，无则 []。
-- 三类数组没有 Schema 条数上限。每项8至300字、包含中文、语义完整；排除
+- 两类数组没有 Schema 条数上限。每项8至300字、包含中文、语义完整；排除
   账号ID、界面元素、时间戳、OCR碎片和残句。
 
 时间归因示例仅用于理解规则：
@@ -372,7 +388,6 @@ async def structure_information(
   "case_id":"english-kebab-case",
   "内容主题":"中文主题",
   "原子主张":["完整主张"],
-  "新闻事实":["内容中明确陈述的事实性背景"],
   "隐性观点":["内容隐含的立场或价值判断"]
 }}
 

@@ -125,7 +125,6 @@ def test_structured_reading_result_normalizes_summary_punctuation() -> None:
             "敌敌畏经皮肤吸收可导致人体有机磷中毒。",
             "某项法规禁止在食品中使用该化学成分！",
         ],
-        news_facts=[],
         implicit_opinions=[],
     )
 
@@ -313,7 +312,7 @@ def test_cache_key_includes_pipeline_version(monkeypatch) -> None:
     monkeypatch.setattr(ResultCache, "PIPELINE_VERSION", "next-pipeline")
     after = ResultCache.key("https://example.com/video", "auto")
 
-    assert original == "lossless-fulltext-v1"
+    assert original == "atomic-claims-only-v1"
     assert before != after
 
 
@@ -355,7 +354,6 @@ def test_structured_information_uses_exact_downstream_keys() -> None:
             "case_id": "watermelon-seed-rumor",
             "内容主题": "无籽西瓜食品安全谣言核验",
             "原子主张": ["家长尽量不要给孩子吃无籽西瓜"],
-            "新闻事实": ["市场上存在无籽西瓜"],
             "隐性观点": ["人工培育的农作物不安全"],
         }
     )
@@ -364,7 +362,6 @@ def test_structured_information_uses_exact_downstream_keys() -> None:
         "case_id",
         "内容主题",
         "原子主张",
-        "新闻事实",
         "隐性观点",
     }
     assert "claims" not in dumped
@@ -372,7 +369,7 @@ def test_structured_information_uses_exact_downstream_keys() -> None:
 
 def test_structured_information_schema_enforces_item_quality_without_count_caps() -> None:
     properties = STRUCTURED_INFORMATION_SCHEMA["properties"]
-    for name in ("原子主张", "新闻事实", "隐性观点"):
+    for name in ("原子主张", "隐性观点"):
         assert "maxItems" not in properties[name]
         assert properties[name]["items"]["minLength"] >= 8
         assert "\\u4e00" in properties[name]["items"]["pattern"]
@@ -386,9 +383,6 @@ def test_structured_information_does_not_keyword_filter_semantics() -> None:
             "原子主张": [
                 "加强监管很重要并且需要持续推进",
             ],
-            "新闻事实": [
-                "某媒体记者发表了相关评论",
-            ],
             "隐性观点": [
                 "记者认为事故需要引起重视",
             ],
@@ -396,7 +390,6 @@ def test_structured_information_does_not_keyword_filter_semantics() -> None:
     )
 
     assert structured.atomic_claims == ["加强监管很重要并且需要持续推进"]
-    assert structured.news_facts == ["某媒体记者发表了相关评论"]
     assert structured.implicit_opinions == ["记者认为事故需要引起重视"]
 
 
@@ -409,14 +402,11 @@ def test_structural_normalization_preserves_model_content() -> None:
                 "黎明在慈善晚宴通过危险表演为疫苗项目筹集善款",
                 "相关善款用于采购疫苗并让中国儿童免费获得糖丸疫苗",
             ],
-            "新闻事实": "内容声称黎明通过演唱会和慈善表演筹集善款购买糖丸疫苗",
         }
     )
 
     assert result["case_id"].startswith("case-")
-    assert result["新闻事实"] == [
-        "内容声称黎明通过演唱会和慈善表演筹集善款购买糖丸疫苗"
-    ]
+    assert "新闻事实" not in result
     assert result["隐性观点"] == []
 
 
@@ -426,7 +416,6 @@ def test_pipeline_ignores_model_usage_metadata_when_validating_protocol() -> Non
             "case_id": "li-ming-polio-vaccine",
             "内容主题": "黎明为内地儿童筹集疫苗善款的传闻",
             "原子主张": ["黎明筹集善款购买了小儿麻痹症疫苗"],
-            "新闻事实": ["视频讲述黎明参与儿童疫苗筹款的事件"],
             "隐性观点": [],
             "_usage": {"prompt_tokens": 100, "completion_tokens": 50},
         }
@@ -444,10 +433,6 @@ def test_structured_protocol_accepts_all_grounded_items_without_count_caps() -> 
             f"这是需要独立核验的第{index}项具体原子主张"
             for index in range(1, 6)
         ],
-        "新闻事实": [
-            f"这是内容明确陈述的第{index}项独立新闻事实"
-            for index in range(1, 4)
-        ],
         "隐性观点": [
             f"这是根据完整上下文识别的第{index}项隐性观点"
             for index in range(1, 5)
@@ -457,9 +442,8 @@ def test_structured_protocol_accepts_all_grounded_items_without_count_caps() -> 
     structured = StructuredInformation.model_validate(payload)
 
     assert len(structured.atomic_claims) == 5
-    assert len(structured.news_facts) == 3
     assert len(structured.implicit_opinions) == 4
-    for field in ("原子主张", "新闻事实", "隐性观点"):
+    for field in ("原子主张", "隐性观点"):
         assert "maxItems" not in STRUCTURED_INFORMATION_SCHEMA["properties"][field]
 
 
@@ -473,7 +457,6 @@ def test_structured_quality_gate_detects_fragmented_enumeration() -> None:
                 "这笔善款全部用于采购疫苗",
                 "疫苗让大量儿童获得免费接种",
             ],
-            "新闻事实": [],
             "隐性观点": [],
         }
     )
@@ -489,12 +472,22 @@ def test_structured_quality_gate_detects_cross_claim_number_duplication() -> Non
                 "某人在一场活动中筹集到350万美元善款",
                 "某人将筹集到的350万美元用于采购医疗物资",
             ],
-            "新闻事实": [],
             "隐性观点": [],
         }
     )
 
     assert any("重复同一关键数字" in issue for issue in issues)
+
+
+def test_structured_quality_gate_rejects_ironic_stance_as_atomic_claim() -> None:
+    issues = _structured_quality_issues({
+        "原子主张": [
+            "说话者通过反问和夸张质疑高频献血行为，其真实立场并非字面崇拜"
+        ],
+        "隐性观点": [],
+    })
+
+    assert any("隐性观点" in issue for issue in issues)
 
 
 def test_structured_quality_gate_allows_many_independent_complete_claims() -> None:
@@ -508,7 +501,6 @@ def test_structured_quality_gate_allows_many_independent_complete_claims() -> No
                 "法院判决确认涉案企业承担相应民事责任",
                 "研究人员报告新材料在高温环境下保持稳定",
             ],
-            "新闻事实": [],
             "隐性观点": [],
         }
     )
@@ -664,7 +656,6 @@ def test_structured_information_json_is_repaired_once(monkeypatch) -> None:
                                 "case_id": "test-case",
                                 "内容主题": "已修复",
                                 "原子主张": ["敌敌畏接触皮肤可能导致人体中毒"],
-                                "新闻事实": [],
                                 "隐性观点": [],
                             },
                             ensure_ascii=False,
@@ -684,6 +675,41 @@ def test_structured_information_json_is_repaired_once(monkeypatch) -> None:
     assert calls[0]["response_format"]["json_schema"]["strict"] is True
 
 
+def test_structuring_prompt_preserves_full_input_and_requires_irony_analysis(
+    monkeypatch,
+) -> None:
+    calls = []
+    source = (
+        "[发布上下文]\n标题：#脱口秀 #幽默\n"
+        "[语音/字幕]\n我特别崇拜这个姐姐。献血法说一年只能献两次，"
+        "你一年献十几次，存在不存在恶意献血？多报道报道。"
+    )
+
+    async def fake_completion(payload, timeout=120):
+        calls.append(payload)
+        return {
+            "choices": [{
+                "finish_reason": "stop",
+                "message": {"content": json.dumps({
+                    "case_id": "irony-case",
+                    "内容主题": "高频献血行为评论",
+                    "原子主张": ["视频质疑高频献血行为是否符合相关法律规范"],
+                    "隐性观点": ["发布者借字面赞扬反讽高频献血行为"],
+                }, ensure_ascii=False)},
+            }],
+            "usage": {"completion_tokens": 20},
+        }
+
+    monkeypatch.setattr("app.mimo._completion", fake_completion)
+    asyncio.run(structure_information(source, {"title": "#脱口秀 #幽默"}))
+
+    prompt = calls[0]["messages"][1]["content"]
+    assert source in prompt
+    assert "反讽" in prompt
+    assert "字面" in prompt
+    assert "标题" in prompt and "话题标签" in prompt
+
+
 def test_semantic_recompression_only_replaces_a_strictly_better_result(
     monkeypatch,
 ) -> None:
@@ -697,7 +723,6 @@ def test_semantic_recompression_only_replaces_a_strictly_better_result(
             "这笔善款被用于采购相关物资",
             "相关物资最终送达受助人群",
         ],
-        "新闻事实": [],
         "隐性观点": [],
     }
     still_fragmented = {
@@ -739,7 +764,6 @@ def test_semantic_recompression_accepts_compact_self_contained_result(
             "这笔善款被用于采购相关物资",
             "相关物资最终送达受助人群",
         ],
-        "新闻事实": [],
         "隐性观点": [],
     }
     compact = {
@@ -748,7 +772,6 @@ def test_semantic_recompression_accepts_compact_self_contained_result(
         "原子主张": [
             "某人通过多场活动筹集大额善款，并将善款用于采购和发放相关物资"
         ],
-        "新闻事实": [],
         "隐性观点": [],
     }
     responses = [fragmented, compact]
@@ -785,5 +808,4 @@ def test_local_structured_fallback_is_valid_and_deduplicated() -> None:
     )
     assert result.content_topic == "产品发布消息"
     assert result.atomic_claims == []
-    assert result.news_facts == []
     assert result.implicit_opinions == []

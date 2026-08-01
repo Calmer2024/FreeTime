@@ -49,7 +49,6 @@ async def verify_structured_information(
     """Run the audited downstream pipeline and return its web-facing result."""
     if not (
         structured.atomic_claims
-        or structured.news_facts
         or structured.implicit_opinions
     ):
         return {
