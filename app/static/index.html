@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="MiMo Trust 从视频信息提取到多源证据核实的全链路工作台">
+  <title>MiMo Trust - 全链路信源核实</title>
+  <link rel="stylesheet" href="/static/app.css?v=0.3.0">
+</head>
+<body>
+  <div class="app-shell">
+    <main class="content-scroll" id="content-scroll">
+      <div class="content-canvas">
+        <form class="command-bar" id="form">
+          <div class="command-inner">
+            <label class="sr-only" for="url">视频网址或手机分享文本</label>
+            <div class="field input-field">
+              <i class="ui-icon" data-lucide="search" aria-hidden="true"></i>
+              <input id="url" type="text" required autocomplete="url" maxlength="10000"
+                placeholder="粘贴视频链接或手机分享文本">
+              <button class="help-button tooltip" type="button" aria-label="支持的输入"
+                data-tooltip="支持抖音、B站、YouTube 完整链接、短链与手机分享文本。">
+                <i data-lucide="circle-help" aria-hidden="true"></i>
+              </button>
+            </div>
+            <div class="field select-field">
+              <i class="ui-icon" data-lucide="scan-search" aria-hidden="true"></i>
+              <label class="sr-only" for="mode">提取模式</label>
+              <select id="mode" aria-label="提取模式">
+                <option value="auto">智能提取</option>
+                <option value="visual">全模态</option>
+              </select>
+              <i class="select-chevron" data-lucide="chevron-down" aria-hidden="true"></i>
+            </div>
+            <button class="primary-button tooltip" id="submit" type="submit"
+              aria-label="开始提取" data-tooltip="开始提取">
+              <i class="button-icon" data-lucide="scan-line" aria-hidden="true"></i>
+            </button>
+          </div>
+        </form>
+
+        <section class="panel workbench" id="workbench" aria-live="polite" hidden>
+          <div class="loading" id="loading">
+            <div class="loading-head">
+              <div class="loading-state">
+                <span class="spinner" aria-hidden="true"></span>
+                <strong id="loading-label">正在解析链接</strong>
+              </div>
+              <span class="timer" id="timer">0.0s</span>
+            </div>
+            <div class="skeleton skeleton-wide"></div>
+            <div class="skeleton skeleton-medium"></div>
+            <div class="skeleton skeleton-short"></div>
+          </div>
+
+          <div class="result" id="result">
+            <div class="result-grid">
+              <aside class="media">
+                <img class="thumbnail" id="thumbnail" alt="视频封面">
+                <div class="eyebrow" id="platform"></div>
+                <h1 class="video-title" id="video-title"></h1>
+                <div class="meta" id="meta"></div>
+              </aside>
+
+              <article class="analysis">
+                <div class="result-navigation">
+                  <div class="result-tabs" role="tablist" aria-label="结果视图">
+                    <button class="result-tab active" id="tab-overview" type="button" role="tab"
+                      aria-selected="true" aria-controls="view-overview" data-result-view="overview">
+                      <i data-lucide="align-left" aria-hidden="true"></i><span>概览</span>
+                    </button>
+                    <button class="result-tab" id="tab-verification" type="button" role="tab"
+                      aria-selected="false" aria-controls="view-verification" data-result-view="verification">
+                      <i data-lucide="badge-check" aria-hidden="true"></i><span>信源核实</span>
+                    </button>
+                    <button class="result-tab" id="tab-structured" type="button" role="tab"
+                      aria-selected="false" aria-controls="view-structured" data-result-view="structured">
+                      <i data-lucide="braces" aria-hidden="true"></i><span>结构化数据</span>
+                    </button>
+                    <button class="result-tab" id="tab-article" type="button" role="tab"
+                      aria-selected="false" aria-controls="view-article" data-result-view="article">
+                      <i data-lucide="file-text" aria-hidden="true"></i><span>完整全文</span>
+                    </button>
+                    <button class="result-tab" id="tab-process" type="button" role="tab"
+                      aria-selected="false" aria-controls="view-process" data-result-view="process">
+                      <i data-lucide="activity" aria-hidden="true"></i><span>处理详情</span>
+                    </button>
+                  </div>
+                  <span class="strategy" id="strategy"></span>
+                </div>
+
+                <section class="result-view active" id="view-overview" role="tabpanel"
+                  aria-labelledby="tab-overview" data-view-panel="overview">
+                  <section class="view-section overview-trace">
+                    <div class="section-heading">
+                      <div>
+                        <i class="section-icon" data-lucide="workflow" aria-hidden="true"></i>
+                        <h2>处理轨迹</h2>
+                      </div>
+                    </div>
+                    <div class="trace" id="trace"></div>
+                  </section>
+                  <section class="view-section">
+                  <div class="section-heading">
+                    <div>
+                      <i class="section-icon" data-lucide="align-left" aria-hidden="true"></i>
+                      <h2>内容概括</h2>
+                    </div>
+                  </div>
+                  <p class="summary" id="summary"></p>
+                  <div class="coverage" id="coverage"></div>
+                  <div class="points" id="points"></div>
+                  <div class="topics" id="topics"></div>
+                  </section>
+                </section>
+
+                <section class="result-view" id="view-verification" role="tabpanel"
+                  aria-labelledby="tab-verification" data-view-panel="verification" hidden>
+                  <section class="view-section trust-hero" id="trust-hero"></section>
+                  <section class="view-section">
+                    <div class="section-heading">
+                      <div>
+                        <i class="section-icon" data-lucide="list-checks" aria-hidden="true"></i>
+                        <h2>逐项核验</h2>
+                      </div>
+                    </div>
+                    <div class="claim-checks" id="claim-checks"></div>
+                  </section>
+                  <section class="view-section">
+                    <div class="section-heading">
+                      <div>
+                        <i class="section-icon" data-lucide="library" aria-hidden="true"></i>
+                        <h2>引用证据</h2>
+                      </div>
+                    </div>
+                    <div class="evidence-list" id="evidence-list"></div>
+                  </section>
+                  <details class="trust-audit">
+                    <summary>
+                      <i class="disclosure-icon" data-lucide="waypoints" aria-hidden="true"></i>
+                      <span>检索与审计详情</span>
+                      <i class="summary-chevron" data-lucide="chevron-down" aria-hidden="true"></i>
+                    </summary>
+                    <div class="trust-audit-body" id="trust-audit-body"></div>
+                  </details>
+                </section>
+
+                <section class="result-view" id="view-structured" role="tabpanel"
+                  aria-labelledby="tab-structured" data-view-panel="structured" hidden>
+                  <section class="view-section">
+                    <div class="section-heading">
+                      <div>
+                        <i class="section-icon" data-lucide="braces" aria-hidden="true"></i>
+                        <h2>结构化数据</h2>
+                      </div>
+                      <button class="help-button tooltip" type="button" aria-label="结构化数据说明"
+                        data-tooltip="供下游信源核实使用的严格 Schema 数据。新闻事实表示内容声称的事实，不代表已经核真。">
+                        <i data-lucide="circle-help" aria-hidden="true"></i>
+                      </button>
+                    </div>
+                    <div class="structured-output" id="structured-output"></div>
+                    <details>
+                      <summary>
+                        <i class="disclosure-icon" data-lucide="code-2" aria-hidden="true"></i>
+                        <span>标准 JSON</span>
+                        <i class="summary-chevron" data-lucide="chevron-down" aria-hidden="true"></i>
+                      </summary>
+                      <pre class="json-output" id="json-output"></pre>
+                    </details>
+                  </section>
+
+                </section>
+
+                <section class="result-view" id="view-article" role="tabpanel"
+                  aria-labelledby="tab-article" data-view-panel="article" hidden>
+                  <div class="section-heading">
+                    <div>
+                      <i class="section-icon" data-lucide="file-text" aria-hidden="true"></i>
+                      <h2>完整全文</h2>
+                    </div>
+                  </div>
+                  <article class="cleaned-article" id="cleaned-article"></article>
+                </section>
+
+                <section class="result-view" id="view-process" role="tabpanel"
+                  aria-labelledby="tab-process" data-view-panel="process" hidden>
+                  <section class="view-section">
+                    <div class="section-heading">
+                      <div>
+                        <i class="section-icon" data-lucide="gauge" aria-hidden="true"></i>
+                        <h2>提取覆盖</h2>
+                      </div>
+                    </div>
+                    <div class="plan-badges" id="plan-badges"></div>
+                    <div class="coverage-grid" id="coverage-grid"></div>
+                  </section>
+                  <section class="view-section">
+                    <div class="section-heading">
+                      <div>
+                        <i class="section-icon" data-lucide="layers-3" aria-hidden="true"></i>
+                        <h2>成本阶梯</h2>
+                      </div>
+                    </div>
+                  <div class="cost-ladder" id="cost-ladder"></div>
+                  </section>
+                  <section class="view-section">
+                    <div class="section-heading">
+                      <div>
+                        <i class="section-icon" data-lucide="scan-text" aria-hidden="true"></i>
+                        <h2>关键帧 OCR</h2>
+                      </div>
+                    </div>
+                  <div class="keyframe-list" id="keyframes"></div>
+                  </section>
+                </section>
+              </article>
+            </div>
+          </div>
+
+          <div class="error" id="error" role="alert"></div>
+        </section>
+
+        <section class="panel history">
+          <div class="history-head">
+            <div class="section-heading">
+              <div><i class="section-icon" data-lucide="history" aria-hidden="true"></i><h2>最近提取</h2></div>
+            </div>
+            <button class="icon-button danger-quiet tooltip" id="clear-history" type="button"
+              aria-label="清空全部缓存" data-tooltip="清空全部缓存">
+              <i data-lucide="trash-2" aria-hidden="true"></i>
+            </button>
+          </div>
+          <div class="history-list" id="history-list">
+            <div class="history-empty">正在读取记录</div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+  <script src="/static/app.js?v=0.3.0"></script>
+</body>
+</html>
