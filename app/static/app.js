@@ -84,7 +84,7 @@ function render(data) {
   const coverage = data.coverage || {};
   const structured = data.structured_data || {
     case_id: "unstructured", "内容主题": "未识别内容主题",
-    "原子主张": [], "新闻事实": [], "隐性观点": []
+    "原子主张": [], "隐性观点": []
   };
   $("plan-badges").innerHTML = [
     [meta.content_type === "image_carousel" ? "images" : "video", meta.content_type === "image_carousel" ? "图文" : "视频"],
@@ -107,7 +107,6 @@ function render(data) {
   const groups = [
     ["内容主题", [structured["内容主题"]].filter(Boolean)],
     ["原子主张", structured["原子主张"] || []],
-    ["新闻事实", structured["新闻事实"] || []],
     ["隐性观点", structured["隐性观点"] || []]
   ];
   $("structured-output").innerHTML = groups.map(([name, values]) =>
@@ -135,18 +134,59 @@ function render(data) {
     return `<div class="keyframe-row"><strong>${escapeHtml(position)}</strong> / ${escapeHtml(frame.frame_type)}<br>OCR：${escapeHtml(texts)}${observations ? `<br>画面：${escapeHtml(observations)}` : ""}</div>`;
   }).join("") || '<div class="history-empty">暂无关键帧结果</div>';
 
-  const traces = data.timings.map(item => [item.name, `${item.milliseconds} ms`]);
-  traces.push(["估算成本", `CNY ${data.estimated_cost_cny.toFixed(5)}`]);
-  traces.push(["取得文本", `${data.transcript_chars} 字符`]);
-  $("trace").innerHTML = traces.map(([name, value]) =>
-    `<div class="trace-item"><span>${escapeHtml(name)}</span><strong>${escapeHtml(value)}</strong></div>`
-  ).join("");
+  renderPipelineTimings(data);
+  renderStructuredInput(data);
   $("workbench").hidden = false;
   $("result").classList.add("active");
   const verificationStatus = data.verification?.status;
   switchResultView(verificationStatus && verificationStatus !== "skipped" ? "verification" : "overview");
   refreshIcons();
   $("content-scroll").scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function fullPipelineMilliseconds(data) {
+  const extraction = Number(data.extraction_milliseconds) ||
+    (data.timings || []).reduce((total, item) => total + Number(item.milliseconds || 0), 0);
+  const verification = Number(data.verification?.timings?.total_seconds || 0) * 1000;
+  return Number(data.full_pipeline_milliseconds) || Math.round(extraction + verification);
+}
+
+function renderStructuredInput(data) {
+  const inputText = data.structured_input_text || data.full_source_text || "";
+  const inputChars = Number(data.structured_input_chars) || inputText.length;
+  const usedFallback = !data.structured_input_text && Boolean(data.full_source_text);
+  const notes = [
+    `实际输入 ${inputChars} 字符`,
+    data.structured_input_truncated ? "已达到服务端输入上限，后续内容未发送" : "未截断",
+    usedFallback ? "历史缓存：根据完整原文还原" : "服务端记录的实际结构化输入"
+  ];
+  $("llm-structured-input-meta").textContent = notes.join(" · ");
+  $("llm-structured-input").textContent = inputText || "当前记录没有可展示的结构化模型输入";
+}
+
+function renderPipelineTimings(data) {
+  const extractionMilliseconds = Number(data.extraction_milliseconds) ||
+    (data.timings || []).reduce((total, item) => total + Number(item.milliseconds || 0), 0);
+  const verificationMilliseconds = Math.round(Number(data.verification?.timings?.total_seconds || 0) * 1000);
+  const totalMilliseconds = fullPipelineMilliseconds(data);
+  const extractionTraceItems = (data.timings || []).map(item => ({
+    phase: "信息提取", name: item.name, milliseconds: Number(item.milliseconds || 0), kind: "extraction"
+  }));
+  const verificationTraceItems = Object.entries(data.verification?.timings?.stages || {}).map(([name, seconds]) => ({
+    phase: "信源核实", name: stageLabel(name), milliseconds: Math.round(Number(seconds || 0) * 1000), kind: "verification"
+  }));
+  const traceItems = [...extractionTraceItems, ...verificationTraceItems];
+  const traceHtml = traceItems.map(item =>
+    `<div class="trace-item trace-${item.kind}"><span>${escapeHtml(item.phase)} · ${escapeHtml(item.name)}</span><strong>${formatDuration(item.milliseconds)}</strong></div>`
+  ).join("");
+  const totalsHtml = `<div class="trace-item trace-total"><span>全流程 · 总时长</span><strong>${formatDuration(totalMilliseconds)}</strong></div>`;
+  $("trace").innerHTML = traceHtml + totalsHtml;
+  $("process-trace").innerHTML = traceHtml + totalsHtml;
+  $("full-pipeline-summary").innerHTML = [
+    ["信息提取", extractionMilliseconds],
+    ["信源核实", verificationMilliseconds],
+    ["全流程", totalMilliseconds]
+  ].map(([label, milliseconds], index) => `<div class="pipeline-summary-item ${index === 2 ? "primary" : ""}"><span>${escapeHtml(label)}</span><strong>${formatDuration(milliseconds)}</strong></div>`).join("");
 }
 
 function renderVerificationSafely(verification, structured) {
@@ -166,7 +206,7 @@ function renderVerificationSafely(verification, structured) {
     </div>`;
     $("claim-checks").innerHTML = '<div class="history-empty">请刷新页面后重试</div>';
     $("evidence-list").innerHTML = '<div class="history-empty">请刷新页面后重试</div>';
-    $("trust-audit-body").innerHTML = "";
+    $("trust-audit-body").innerHTML = '<div class="history-empty">当前没有可展示的信源审计记录</div>';
   }
 }
 
@@ -181,7 +221,7 @@ function renderVerification(verification, structured) {
     </div>`;
     $("claim-checks").innerHTML = '<div class="history-empty">暂无逐项结论</div>';
     $("evidence-list").innerHTML = '<div class="history-empty">暂无引用证据</div>';
-    $("trust-audit-body").innerHTML = "";
+    $("trust-audit-body").innerHTML = '<div class="history-empty">当前没有可展示的信源审计记录</div>';
     refreshIcons();
     return;
   }
@@ -264,6 +304,15 @@ function verdictIcon(verdict) {
 
 function stageLabel(name) {
   return ({ search_plan: "检索规划", retrieval: "多源检索", evidence_triage: "证据初筛", report_generation: "结论生成" })[name] || name;
+}
+
+function formatDuration(milliseconds) {
+  const value = Math.max(0, Number(milliseconds) || 0);
+  if (value < 1000) return `${Math.round(value)} ms`;
+  if (value < 60000) return `${(value / 1000).toFixed(value < 10000 ? 2 : 1)}s`;
+  const minutes = Math.floor(value / 60000);
+  const seconds = Math.round((value % 60000) / 1000);
+  return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
 }
 
 async function loadHistory() {

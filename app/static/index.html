@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="MiMo Trust 从视频信息提取到多源证据核实的全链路工作台">
   <title>MiMo Trust - 全链路信源核实</title>
-  <link rel="stylesheet" href="/static/app.css?v=0.3.0">
+  <link rel="stylesheet" href="/static/app.css?v=0.4.0">
 </head>
 <body>
   <div class="app-shell">
@@ -135,14 +135,6 @@
                     </div>
                     <div class="evidence-list" id="evidence-list"></div>
                   </section>
-                  <details class="trust-audit">
-                    <summary>
-                      <i class="disclosure-icon" data-lucide="waypoints" aria-hidden="true"></i>
-                      <span>检索与审计详情</span>
-                      <i class="summary-chevron" data-lucide="chevron-down" aria-hidden="true"></i>
-                    </summary>
-                    <div class="trust-audit-body" id="trust-audit-body"></div>
-                  </details>
                 </section>
 
                 <section class="result-view" id="view-structured" role="tabpanel"
@@ -154,7 +146,7 @@
                         <h2>结构化数据</h2>
                       </div>
                       <button class="help-button tooltip" type="button" aria-label="结构化数据说明"
-                        data-tooltip="供下游信源核实使用的严格 Schema 数据。新闻事实表示内容声称的事实，不代表已经核真。">
+                        data-tooltip="供下游信源核实使用的严格 Schema 数据，只包含原子主张和隐性观点。">
                         <i data-lucide="circle-help" aria-hidden="true"></i>
                       </button>
                     </div>
@@ -187,8 +179,28 @@
                   <section class="view-section">
                     <div class="section-heading">
                       <div>
+                        <i class="section-icon" data-lucide="timer" aria-hidden="true"></i>
+                        <h2>全流程总览</h2>
+                      </div>
+                    </div>
+                    <div class="pipeline-summary" id="full-pipeline-summary"></div>
+                    <div class="trace process-trace" id="process-trace"></div>
+                  </section>
+                  <section class="view-section">
+                    <div class="section-heading">
+                      <div>
+                        <i class="section-icon" data-lucide="braces" aria-hidden="true"></i>
+                        <h2>LLM 结构化输入（完整）</h2>
+                      </div>
+                    </div>
+                    <p class="structured-input-meta" id="llm-structured-input-meta"></p>
+                    <pre class="structured-input" id="llm-structured-input"></pre>
+                  </section>
+                  <section class="view-section">
+                    <div class="section-heading">
+                      <div>
                         <i class="section-icon" data-lucide="gauge" aria-hidden="true"></i>
-                        <h2>提取覆盖</h2>
+                        <h2>信息提取覆盖</h2>
                       </div>
                     </div>
                     <div class="plan-badges" id="plan-badges"></div>
@@ -211,6 +223,15 @@
                       </div>
                     </div>
                   <div class="keyframe-list" id="keyframes"></div>
+                  </section>
+                  <section class="view-section">
+                    <div class="section-heading">
+                      <div>
+                        <i class="section-icon" data-lucide="waypoints" aria-hidden="true"></i>
+                        <h2>信源检索与审计</h2>
+                      </div>
+                    </div>
+                    <div class="trust-audit-body process-audit" id="trust-audit-body"></div>
                   </section>
                 </section>
               </article>
@@ -239,6 +260,6 @@
   </div>
 
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
-  <script src="/static/app.js?v=0.3.0"></script>
+  <script src="/static/app.js?v=0.4.0"></script>
 </body>
 </html>

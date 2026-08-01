@@ -613,6 +613,47 @@ details[open] .summary-chevron { transform: rotate(180deg); }
 .trace-item { padding: 12px; background: var(--surface-raised); }
 .trace-item span { display: block; color: var(--ink-tertiary); font-size: 10px; }
 .trace-item strong { display: block; margin-top: 5px; font: 550 12px/1.2 var(--font-mono); }
+.trace-item.trace-extraction { box-shadow: inset 2px 0 0 #a8adb4; }
+.trace-item.trace-verification { box-shadow: inset 2px 0 0 #748b78; }
+.trace-item.trace-total { box-shadow: inset 2px 0 0 var(--ink); background: var(--action-soft); }
+.pipeline-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+.pipeline-summary-item {
+  padding: 14px 15px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
+}
+.pipeline-summary-item span, .pipeline-summary-item strong { display: block; }
+.pipeline-summary-item span { color: var(--ink-tertiary); font-size: 10px; }
+.pipeline-summary-item strong { margin-top: 7px; font: 650 17px/1 var(--font-mono); }
+.pipeline-summary-item.primary { color: #fff; background: var(--action); }
+.pipeline-summary-item.primary span { color: rgba(255,255,255,.68); }
+.process-trace { margin-bottom: 4px; }
+.process-audit { margin-top: 12px; }
+.structured-input-meta {
+  margin: 10px 0 0;
+  color: var(--ink-tertiary);
+  font-size: 10px;
+  line-height: 1.6;
+}
+.structured-input {
+  max-height: 420px;
+  overflow: auto;
+  margin: 10px 0 0;
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: #30322f;
+  color: #dddfdb;
+  font: 11px/1.75 var(--font-mono);
+}
 .error {
   display: none;
   padding: 15px 20px;
@@ -683,6 +724,7 @@ details[open] .summary-chevron { transform: rotate(180deg); }
   .coverage-grid, .cost-ladder { grid-template-columns: 1fr 1fr; }
   .trust-verdict { grid-template-columns: auto minmax(0, 1fr); }
   .trust-stats { grid-column: 1 / -1; }
+  .pipeline-summary { grid-template-columns: 1fr; }
   .history-item { grid-template-columns: 1fr; }
   .history-meta { white-space: normal; }
   .history-actions button { flex: 1; justify-content: center; }
