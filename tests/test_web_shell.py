@@ -72,3 +72,27 @@ def test_full_pipeline_details_have_one_unified_process_view() -> None:
     assert "fullPipelineMilliseconds" in script
     assert "verificationTraceItems" in script
     assert "data.full_source_text" in script
+    assert 'id="thumbnail-placeholder"' in html
+    assert "showThumbnail" in script
+    assert "thumbnail.onerror" in script
+    css = Path("app/static/app.css").read_text(encoding="utf-8")
+    assert "object-fit: contain" in css
+    assert "filter: saturate" not in css
+
+
+def test_web_shell_uses_one_input_for_links_and_text() -> None:
+    html = Path("app/static/index.html").read_text(encoding="utf-8")
+    script = Path("app/static/app.js").read_text(encoding="utf-8")
+
+    assert 'id="url" type="text"' in html
+    assert 'autocomplete="off"' in html
+    assert "直接输入需要核验的文字" in html
+    assert 'id="upload-fields"' not in html
+    assert 'id="upload-files"' not in html
+    assert 'id="upload-title"' not in html
+    assert 'id="upload-text"' not in html
+    assert 'fetch("/api/analyze/upload"' in script
+    assert '<option value="upload">' not in html
+    assert "selectInputRoute" in script
+    assert 'route.kind === "text"' in script
+    assert '$("upload-' not in script

@@ -25,6 +25,7 @@ StructuredSentence = Annotated[
 
 class AnalyzeRequest(BaseModel):
     url: str = Field(min_length=1, max_length=10_000)
+    input_kind: Literal["auto", "article", "platform"] = "auto"
     mode: Literal["auto", "visual"] = "auto"
     refresh: bool = False
     verify: bool = True
@@ -32,8 +33,12 @@ class AnalyzeRequest(BaseModel):
 
 class VideoMetadata(BaseModel):
     platform: str
-    content_type: Literal["video", "image_carousel"] = "video"
+    content_type: Literal[
+        "video", "image_carousel", "article", "upload_bundle"
+    ] = "video"
     image_count: int = 0
+    source_subtype: str | None = None
+    source_context: dict[str, Any] = Field(default_factory=dict)
     title: str
     uploader: str | None = None
     duration_seconds: float | None = None

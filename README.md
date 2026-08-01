@@ -1,6 +1,8 @@
 # MiMo Trust 全链路信源核实 Demo
 
-输入抖音、哔哩哔哩或 YouTube 的公开视频 URL、抖音图文链接、平台短链或手机完整分享文案，系统先提取完整原文并生成严格结构化主张，再自动完成检索规划、多源并发检索、证据语义初筛、逐主张判定和可追溯核验报告。
+输入文章 URL，或快手、微博、小红书、视频号、抖音、哔哩哔哩、YouTube 的公开内容链接/手机分享文案；没有有效链接时，系统会自动将文字、图片、音频与视频作为一个多模态案例处理，无需选择“手动组合”模式。系统会先合并可回溯原文并生成严格结构化主张，再自动完成检索规划、多源并发检索、证据语义初筛、逐主张判定和可追溯核验报告。
+
+小红书上游已区分图文、视频、长文和实况照片笔记；商品、地点、话题与合作卡片作为发布上下文合并。完整调查和适配说明见 [`docs/小红书帖子类型与解析适配报告.md`](docs/小红书帖子类型与解析适配报告.md)。
 
 ## 全链路流程
 
@@ -64,9 +66,12 @@ uvicorn app.main:app --reload
 
 生产环境建议将该浏览器适配器独立部署为低权限会话服务，保持稳定出口 IP，并监控真实作品探测成功率。若使用外部 Netscape Cookie 作为 yt-dlp 备用会话，应配置 `YTDLP_COOKIES_FILE`，并将导出浏览器当时的完整 UA 写入 `YTDLP_USER_AGENT`；一旦真实探测失败即轮换会话，而不是仅按固定 TTL 判断。
 
+快手和视频号已走各自的页面适配器，不再交给不支持它们的 yt-dlp。快手可配置 `KUAISHOU_COOKIES_FILE` / `KUAISHOU_USER_AGENT`，视频号可配置 `WECHAT_CHANNELS_COOKIES_FILE` / `WECHAT_CHANNELS_USER_AGENT`；Cookie 使用 Netscape 格式，并必须与导出时的 UA、出口 IP 和设备会话匹配。遇到验证码或过期 `exportkey` 时系统会返回可操作错误，不会绕过平台验证。真实测试结论见 [`docs/快手微博视频号与自动多模态链路测试报告.md`](docs/快手微博视频号与自动多模态链路测试报告.md)。
+
 ## 接口
 
 - `POST /api/analyze`：默认执行内容提取与信源核实全链路；传 `verify=false` 可仅提取
+- `POST /api/analyze/upload`：以 multipart 同时提交 `text` 与多个 `files`，合并为一个多模态核验案例
 - `POST /api/verify`：对已有标准结构化数据单独执行或重试信源核实
 - `GET /api/videos`：列出持久化结果
 - `DELETE /api/videos/{cache_key}`：删除单条

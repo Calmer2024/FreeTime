@@ -3,8 +3,9 @@ from __future__ import annotations
 import asyncio
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -24,18 +25,48 @@ from app.pipeline import (
     _structured_reading_result,
     analyze,
 )
-from app.security import UnsafeUrlError, resolve_video_input
+from app.content import analyze_article_url, analyze_upload_bundle
+from app.security import ALLOWED_HOST_SUFFIXES, UnsafeUrlError, resolve_content_input
+from app.thumbnails import thumbnail_store
 from app.trust.service import verify_structured_information
 
 
 app = FastAPI(
-    title="MiMo Trust Video Information Extraction Demo",
-    version="0.4.0",
+    title="MiMo Trust Multimodal Source Verification",
+    version="0.5.0",
     docs_url="/api/docs",
 )
 cache = ResultCache(settings.cache_ttl_seconds)
 static_dir = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+
+async def _stabilize_result_thumbnail(result: AnalyzeResponse) -> bool:
+    original = result.metadata.thumbnail
+    if not original or original.startswith("/api/thumbnails/"):
+        return False
+    result.metadata.thumbnail = await asyncio.to_thread(
+        thumbnail_store.materialize,
+        original,
+        result.metadata.webpage_url,
+    )
+    return result.metadata.thumbnail != original
+
+
+async def _stabilize_payload_thumbnail(payload: dict[str, object]) -> None:
+    metadata = payload.get("metadata")
+    if not isinstance(metadata, dict):
+        return
+    original = metadata.get("thumbnail")
+    if not isinstance(original, str) or not original or original.startswith(
+        "/api/thumbnails/"
+    ):
+        return
+    metadata["thumbnail"] = await asyncio.to_thread(
+        thumbnail_store.materialize,
+        original,
+        str(metadata.get("webpage_url") or ""),
+    )
 
 
 def _ensure_cleaned_article(payload: dict[str, object]) -> dict[str, object]:
@@ -75,27 +106,47 @@ async def health() -> dict[str, object]:
     return {
         "status": "ok",
         "mimo_configured": bool(settings.mimo_api_key),
-        "supported_platforms": ["抖音", "哔哩哔哩", "YouTube"],
-        "accepted_inputs": ["完整 URL", "平台短链", "手机分享文本"],
+        "supported_platforms": [
+            "抖音", "哔哩哔哩", "YouTube", "快手", "微博", "小红书", "视频号"
+        ],
+        "accepted_inputs": [
+            "文章 URL", "平台链接/分享文本", "无有效链接时自动组合文本+图片+音频+视频"
+        ],
         "extraction_protocol": "structured-information-v4",
     }
 
 
+@app.get("/api/thumbnails/{key}", include_in_schema=False)
+async def thumbnail(key: str) -> FileResponse:
+    path = thumbnail_store.get_path(key)
+    if not path:
+        raise HTTPException(status_code=404, detail="封面不存在或已过期")
+    return FileResponse(
+        path,
+        headers={"Cache-Control": "public, max-age=86400, immutable"},
+    )
+
+
 @app.post("/api/analyze", response_model=AnalyzeResponse)
-async def analyze_video(request: AnalyzeRequest) -> AnalyzeResponse:
+async def analyze_content(request: AnalyzeRequest) -> AnalyzeResponse:
     request_started = time.perf_counter()
     try:
-        url = await asyncio.to_thread(resolve_video_input, request.url)
+        url = await asyncio.to_thread(
+            resolve_content_input,
+            request.url,
+            platform_only=request.input_kind == "platform",
+        )
     except UnsafeUrlError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    cache_key = cache.key(url, request.mode)
+    cache_key = cache.key(f"{request.input_kind}:{url}", request.mode)
     if not request.refresh:
         cached = cache.get(cache_key)
         if cached:
             cached["cached"] = True
             _ensure_cleaned_article(cached)
             cached_result = AnalyzeResponse.model_validate(cached)
+            thumbnail_changed = await _stabilize_result_thumbnail(cached_result)
             if request.verify and not cached_result.verification:
                 try:
                     cached_result.verification = await verify_structured_information(
@@ -121,12 +172,31 @@ async def analyze_video(request: AnalyzeRequest) -> AnalyzeResponse:
                     cached_result.extraction_milliseconds
                     + round(verification_seconds * 1000)
                 )
+            if thumbnail_changed:
+                cache.set(cache_key, cached_result.model_dump(mode="json"))
             return cached_result
 
     try:
-        result = await analyze(url, request.mode)
+        hostname = (urlparse(url).hostname or "").lower()
+        is_platform = any(
+            hostname == suffix or hostname.endswith(f".{suffix}")
+            for suffix in ALLOWED_HOST_SUFFIXES
+        )
+        if request.input_kind == "article" or not is_platform:
+            result = await analyze_article_url(url)
+        else:
+            try:
+                result = await analyze(url, request.mode)
+            except PipelineError:
+                if request.input_kind == "platform" or hostname.endswith(
+                    ("kuaishou.com", "gifshow.com")
+                ):
+                    raise
+                result = await analyze_article_url(url)
     except PipelineError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    await _stabilize_result_thumbnail(result)
 
     if request.verify:
         try:
@@ -142,6 +212,36 @@ async def analyze_video(request: AnalyzeRequest) -> AnalyzeResponse:
         (time.perf_counter() - request_started) * 1000
     )
     cache.set(cache_key, result.model_dump(mode="json"))
+    return result
+
+
+@app.post("/api/analyze/upload", response_model=AnalyzeResponse)
+async def analyze_uploaded_content(
+    title: str = Form(default="多模态组合核验", max_length=200),
+    text: str = Form(default="", max_length=50_000),
+    files: list[UploadFile] = File(default=[]),
+    verify: bool = Form(default=True),
+) -> AnalyzeResponse:
+    request_started = time.perf_counter()
+    try:
+        result = await analyze_upload_bundle(title.strip(), text, files)
+    except PipelineError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=422, detail=f"多模态材料解析失败：{exc}"
+        ) from exc
+    await _stabilize_result_thumbnail(result)
+    if verify:
+        try:
+            result.verification = await verify_structured_information(
+                result.structured_data
+            )
+        except Exception as exc:
+            result.verification = {"status": "failed", "message": str(exc)}
+    result.full_pipeline_milliseconds = round(
+        (time.perf_counter() - request_started) * 1000
+    )
     return result
 
 
@@ -191,6 +291,11 @@ async def list_videos(limit: int = 100) -> StoredVideoList:
         result = item.get("result")
         if isinstance(result, dict):
             _ensure_cleaned_article(result)
+    await asyncio.gather(*(
+        _stabilize_payload_thumbnail(item["result"])
+        for item in items
+        if isinstance(item.get("result"), dict)
+    ))
     return StoredVideoList.model_validate({"items": items, "total": len(items)})
 
 

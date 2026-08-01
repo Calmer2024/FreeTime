@@ -19,6 +19,7 @@ import httpx
 import imageio_ffmpeg
 import yt_dlp
 
+from app.channels import ChannelsParseError, extract_channels_info, is_channels_url
 from app.config import settings
 from app.douyin_cookies import (
     DouyinCookieError,
@@ -42,10 +43,17 @@ from app.models import (
     StructuredInformation,
     VideoMetadata,
 )
+from app.kuaishou import KuaishouParseError, extract_kuaishou_info, is_kuaishou_url
 from app.transcript import (
     choose_subtitle,
     local_extractive_summary,
     parse_subtitle_document,
+)
+from app.weibo import WeiboParseError, extract_weibo_post_info, is_weibo_status_url
+from app.xiaohongshu import (
+    XiaohongshuParseError,
+    extract_xiaohongshu_info,
+    is_xiaohongshu_url,
 )
 
 
@@ -99,6 +107,21 @@ def _needs_visual_fallback(
     )
 
 
+def _has_unfilled_event_video_gap(
+    *,
+    is_image_carousel: bool,
+    visual_fallback_required: bool,
+    plan: ExtractionPlan,
+    full_visual_executed: bool,
+) -> bool:
+    return (
+        not is_image_carousel
+        and visual_fallback_required
+        and plan.video_type in {"event_footage", "low_information"}
+        and not full_visual_executed
+    )
+
+
 def _platform(info: dict[str, Any]) -> str:
     extractor = str(info.get("extractor_key") or info.get("extractor") or "unknown")
     labels = {
@@ -107,6 +130,12 @@ def _platform(info: dict[str, Any]) -> str:
         "Douyin": "抖音",
         "DouyinNote": "抖音",
         "DouyinBrowser": "抖音",
+        "XiaoHongShu": "小红书",
+        "Kuaishou": "快手",
+        "WechatChannels": "视频号",
+        "Weibo": "微博",
+        "WeiboVideo": "微博",
+        "WeiboPost": "微博",
     }
     return labels.get(extractor, extractor)
 
@@ -118,7 +147,13 @@ def _metadata(info: dict[str, Any], original_url: str) -> VideoMetadata:
             "image_carousel" if info.get("note_images") else "video"
         ),
         image_count=len(info.get("note_images") or []),
-        title=str(info.get("title") or "未命名视频"),
+        source_subtype=info.get("source_subtype"),
+        source_context=(
+            info.get("source_context")
+            if isinstance(info.get("source_context"), dict)
+            else {}
+        ),
+        title=str(info.get("title") or "未命名内容"),
         uploader=info.get("uploader") or info.get("channel"),
         duration_seconds=info.get("duration"),
         thumbnail=info.get("thumbnail"),
@@ -328,6 +363,30 @@ def _extract_info(url: str) -> dict[str, Any]:
     # not consistently emit the video-detail XHR observed by the adapter.
     if _is_douyin_note(url):
         return _extract_douyin_note_info(url)
+    if is_kuaishou_url(url):
+        try:
+            return extract_kuaishou_info(url)
+        except KuaishouParseError as exc:
+            raise PipelineError(f"快手作品解析失败：{exc}") from exc
+    if is_channels_url(url):
+        try:
+            return extract_channels_info(url)
+        except ChannelsParseError as exc:
+            raise PipelineError(f"视频号作品解析失败：{exc}") from exc
+    if is_weibo_status_url(url):
+        try:
+            info = extract_weibo_post_info(url, _base_ydl_options(url))
+            if info.get("_type") == "playlist" and info.get("entries"):
+                info = next(iter(info["entries"]))
+            return info
+        except WeiboParseError as exc:
+            raise PipelineError(f"微博帖子解析失败：{exc}") from exc
+    xiaohongshu_error: XiaohongshuParseError | None = None
+    if is_xiaohongshu_url(url):
+        try:
+            return extract_xiaohongshu_info(url)
+        except XiaohongshuParseError as exc:
+            xiaohongshu_error = exc
     if (
         _is_douyin(url)
         and settings.douyin_auto_cookies
@@ -358,10 +417,33 @@ def _extract_info(url: str) -> dict[str, Any]:
                 raise _douyin_failure(retry_error) from retry_error
         elif _is_douyin(url):
             raise _douyin_failure(first_error) from first_error
+        elif is_xiaohongshu_url(url):
+            raise PipelineError(
+                f"小红书笔记解析失败：{xiaohongshu_error or first_error}"
+            ) from first_error
         else:
             raise
     if info.get("_type") == "playlist" and info.get("entries"):
         info = next(iter(info["entries"]))
+    if is_xiaohongshu_url(url) and not info.get("source_subtype"):
+        if info.get("formats"):
+            info["source_subtype"] = "xiaohongshu_video_note"
+            info["note_images"] = []
+        else:
+            thumbnail_urls = list(dict.fromkeys(
+                str(item.get("url") or "")
+                for item in info.get("thumbnails") or []
+                if isinstance(item, dict) and str(item.get("url") or "")
+            ))
+            info["source_subtype"] = "xiaohongshu_image_note"
+            info["note_images"] = [
+                {"url": image_url, "fallback_urls": [image_url]}
+                for image_url in thumbnail_urls
+            ]
+        info["source_context"] = {
+            "topics": [str(item) for item in info.get("tags") or []],
+            "attachments": [],
+        }
     return info
 
 
@@ -455,7 +537,7 @@ def _select_progressive_media_url(info: dict[str, Any]) -> str | None:
 def _download_browser_media(info: dict[str, Any], target_dir: str) -> Path:
     selected = _select_progressive_format(info)
     if not selected:
-        raise PipelineError("抖音浏览器适配器未返回完整 MP4 媒体流")
+        raise PipelineError("平台适配器未返回完整 MP4 媒体流")
     candidates = list(
         dict.fromkeys(
             str(value)
@@ -481,7 +563,7 @@ def _download_browser_media(info: dict[str, Any], target_dir: str) -> Path:
             except (OSError, httpx.HTTPError) as exc:
                 last_error = exc
                 destination.unlink(missing_ok=True)
-    raise PipelineError(f"抖音浏览器媒体流下载失败：{last_error}")
+    raise PipelineError(f"平台媒体流下载失败：{last_error}")
 
 
 def _download_merged_video(
@@ -491,6 +573,8 @@ def _download_merged_video(
         try:
             return _download_browser_media(info, target_dir)
         except PipelineError:
+            if not _is_douyin(url):
+                raise
             try:
                 refreshed = extract_douyin_browser_info(url)
                 return _download_browser_media(refreshed, target_dir)
@@ -1281,6 +1365,71 @@ async def _analyze_visual(
         return await summarize_video(media, metadata, fps=fps), None
 
 
+async def _analyze_live_photo_videos(
+    urls: list[str],
+    metadata: dict[str, Any],
+    http_headers: dict[str, str] | None = None,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Analyze every motion component while bounding concurrent MiMo requests."""
+    semaphore = asyncio.Semaphore(3)
+
+    async def analyze_one(
+        index: int, url: str, temp_dir: str
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        async with semaphore:
+            try:
+                result = await summarize_video(url, metadata, fps=1.0)
+                return {"url": url, **result}, None
+            except Exception:
+                destination = Path(temp_dir) / f"live-{index:02d}.mp4"
+                try:
+                    async with httpx.AsyncClient(
+                        headers=http_headers or {}, follow_redirects=True, timeout=30
+                    ) as client:
+                        response = await client.get(url)
+                        response.raise_for_status()
+                    destination.write_bytes(response.content)
+                    if not response.content:
+                        return None, url
+                    result = await summarize_video(destination, metadata, fps=1.0)
+                    return {"url": url, **result}, None
+                except Exception:
+                    return None, url
+
+    with tempfile.TemporaryDirectory(prefix="mimo-xhs-live-") as temp_dir:
+        outcomes = await asyncio.gather(*(
+            analyze_one(index, url, temp_dir)
+            for index, url in enumerate(urls, 1)
+        ))
+    results = [result for result, _ in outcomes if result is not None]
+    failures = [url for _, url in outcomes if url is not None]
+    return results, failures
+
+
+def _live_photo_context(
+    results: list[dict[str, Any]],
+) -> tuple[str, list[str]]:
+    lines: list[str] = []
+    notes: list[str] = []
+    for index, result in enumerate(results, 1):
+        observations = [
+            str(result.get("summary") or "").strip(),
+            *(
+                str(item).strip()
+                for item in result.get("key_points") or []
+            ),
+            *(
+                str(item).strip()
+                for item in result.get("on_screen_text") or []
+            ),
+        ]
+        observations = [item for item in observations if item]
+        if observations:
+            lines.append(f"[实况片段 {index}] " + "；".join(observations))
+            notes.extend(observations)
+    return "\n".join(lines), list(dict.fromkeys(notes))
+
+
 def _timing(name: str, started: float) -> StageTiming:
     return StageTiming(
         name=name, milliseconds=round((time.perf_counter() - started) * 1000)
@@ -1432,6 +1581,8 @@ async def analyze(url: str, mode: str) -> AnalyzeResponse:
     plan = ExtractionPlan()
     raw_frames: list[AdaptiveFrame] = []
     keyframe_output: dict[str, Any] | BaseException | None = None
+    live_photo_results: list[dict[str, Any]] = []
+    live_photo_failures: list[str] = []
     visual_fallback_required = _needs_visual_fallback(
         transcript=transcript,
         is_image_carousel=is_image_carousel,
@@ -1445,7 +1596,7 @@ async def analyze(url: str, mode: str) -> AnalyzeResponse:
             raw_frames = await asyncio.to_thread(
                 _download_note_images, info, temp_dir
             )
-            download_label = f"下载抖音图文全部 {len(raw_frames)} 张图片"
+            download_label = f"下载图文全部 {len(raw_frames)} 张图片"
             timings.append(_timing(download_label, stage))
         elif transcript and not visual_fallback_required:
             local_media = None
@@ -1538,6 +1689,23 @@ async def analyze(url: str, mode: str) -> AnalyzeResponse:
         keyframes = _normalize_keyframe_result(
             raw_frames, keyframe_output if keyframe_success else None
         )
+        live_photo_urls = [
+            str(value) for value in info.get("live_photo_videos") or [] if value
+        ]
+        if live_photo_urls:
+            stage = time.perf_counter()
+            live_photo_results, live_photo_failures = (
+                await _analyze_live_photo_videos(
+                    live_photo_urls,
+                    metadata_for_prompt,
+                    info.get("http_headers") or {},
+                )
+            )
+            timings.append(_timing("逐段理解实况照片动态轨", stage))
+            estimated_cost += sum(
+                _token_usage_cost_cny(result)
+                for result in live_photo_results
+            )
         plan = _classify_video(
             transcript, keyframes, duration, audio_activity
         )
@@ -1594,15 +1762,32 @@ async def analyze(url: str, mode: str) -> AnalyzeResponse:
 
         keyframe_text, keyframe_notes = _keyframe_context(keyframes)
         full_visual_text, full_visual_notes = _visual_context(full_visual_result)
+        live_photo_text, live_photo_notes = _live_photo_context(
+            live_photo_results
+        )
+        source_context = metadata.source_context or {}
+        context_lines = [
+            f"话题：{'、'.join(map(str, source_context.get('topics') or []))}"
+            if source_context.get("topics") else "",
+            f"附加卡片：{'、'.join(map(str, source_context.get('attachments') or []))}"
+            if source_context.get("attachments") else "",
+        ]
+        context_text = "\n".join(item for item in context_lines if item)
         source_sections = [
             (
                 "[发布上下文]\n"
                 f"标题：{metadata.title}\n"
                 f"作者：{metadata.uploader or ''}\n"
-                f"简介：{metadata_for_prompt['description'][:1500]}"
+                f"帖子类型：{metadata.source_subtype or metadata.content_type}\n"
+                f"{context_text}\n"
+                f"正文：{metadata_for_prompt['description'][:settings.max_transcript_chars]}"
             ),
             f"[语音/字幕]\n{transcript}" if transcript else "",
             f"[自适应关键帧 OCR 与观察]\n{keyframe_text}" if keyframe_text else "",
+            (
+                f"[实况照片动态轨]\n{live_photo_text}"
+                if live_photo_text else ""
+            ),
             (
                 f"[全视频多模态补充]\n{full_visual_text}"
                 if full_visual_text
@@ -1637,9 +1822,13 @@ async def analyze(url: str, mode: str) -> AnalyzeResponse:
     text_retention = _transcript_retention_percent(
         transcript, cleaned_article
     )
-    visual_analyzed = keyframe_success or full_visual_executed
+    visual_analyzed = (
+        keyframe_success or full_visual_executed or bool(live_photo_results)
+    )
     visual_notes = list(
-        dict.fromkeys([*keyframe_notes, *full_visual_notes])
+        dict.fromkeys([
+            *keyframe_notes, *live_photo_notes, *full_visual_notes
+        ])
     )[:40]
     critical_gaps: list[str] = []
     speech_active = "speech" in plan.active_modalities
@@ -1665,15 +1854,19 @@ async def analyze(url: str, mode: str) -> AnalyzeResponse:
     )
     if keyframe_success and frame_coverage < 100:
         critical_gaps.append("部分图片/关键帧 OCR 未完成")
+    if live_photo_failures:
+        critical_gaps.append(
+            f"{len(live_photo_failures)} 段实况照片动态轨分析失败"
+        )
     if structured_conversion_degraded:
         critical_gaps.append(
             "模型级结构化转换失败，已保留完整原文并执行本地降级"
         )
-    if (
-        visual_fallback_required
-        and
-        plan.video_type in {"event_footage", "low_information"}
-        and not full_visual_executed
+    if _has_unfilled_event_video_gap(
+        is_image_carousel=is_image_carousel,
+        visual_fallback_required=visual_fallback_required,
+        plan=plan,
+        full_visual_executed=full_visual_executed,
     ):
         critical_gaps.append("事件型视频的全视频多模态补充未完成")
     structured_count = (
@@ -1697,6 +1890,11 @@ async def analyze(url: str, mode: str) -> AnalyzeResponse:
         if visual_fallback_required
         else "检测到有效口播文本，已按短路策略跳过关键帧 OCR"
     )
+    if info.get("live_photo_videos"):
+        visual_coverage_note += (
+            f"；已分析 {len(live_photo_results)}/"
+            f"{len(info.get('live_photo_videos') or [])} 段实况动态轨"
+        )
     coverage_note = (
         f"语音覆盖 {audio_coverage:.1f}%；"
         f"全文重组保留 {text_retention:.1f}%；{visual_coverage_note}；"

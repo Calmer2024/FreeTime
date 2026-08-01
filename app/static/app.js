@@ -11,6 +11,25 @@ let currentCacheKey = null;
 refreshIcons();
 loadHistory();
 
+function extractValidHttpUrl(value) {
+  const match = String(value || "").match(/https?:\/\/[^\s<>\]）)】]+/i);
+  if (!match) return "";
+  try {
+    const parsed = new URL(match[0]);
+    return ["http:", "https:"].includes(parsed.protocol) && parsed.hostname ? parsed.href : "";
+  } catch (_error) {
+    return "";
+  }
+}
+
+function selectInputRoute() {
+  const rawInput = $("url").value.trim();
+  const url = extractValidHttpUrl(rawInput);
+  if (url) return { kind: "url", url };
+  if (rawInput) return { kind: "text", text: rawInput };
+  return { kind: "empty" };
+}
+
 document.querySelectorAll("[data-result-view]").forEach(tab => {
   tab.addEventListener("click", () => switchResultView(tab.dataset.resultView));
   tab.addEventListener("keydown", event => {
@@ -34,16 +53,30 @@ $("form").addEventListener("submit", async (event) => {
   $("error").classList.remove("active");
   $("loading").classList.add("active");
   $("submit").disabled = true;
-  $("loading-label").textContent = $("mode").value === "visual" ? "提取全模态内容并核实信源" : "提取内容并核实信源";
+  const route = selectInputRoute();
+  const analyzingText = route.kind === "text";
+  $("loading-label").textContent = analyzingText ? "分析文字并核实信源" : $("mode").value === "visual" ? "提取全模态内容并核实信源" : "提取内容并核实信源";
   clock = setInterval(() => {
     $("timer").textContent = `${((performance.now() - started) / 1000).toFixed(1)}s`;
   }, 100);
   try {
-    const response = await fetch("/api/analyze", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: $("url").value, mode: $("mode").value, refresh: refreshNext, verify: true })
-    });
+    if (route.kind === "empty") {
+      throw new Error("请粘贴链接、分享文本，或直接输入需要核验的文字");
+    }
+    let response;
+    if (route.kind === "text") {
+      const body = new FormData();
+      body.append("title", route.text.slice(0, 200));
+      body.append("text", route.text);
+      body.append("verify", "true");
+      response = await fetch("/api/analyze/upload", { method: "POST", body });
+    } else {
+      response = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: route.url, input_kind: "auto", mode: $("mode").value, refresh: refreshNext, verify: true })
+      });
+    }
     const data = await response.json();
     if (!response.ok) throw new Error(data.detail || "提取失败");
     render(data);
@@ -59,14 +92,39 @@ $("form").addEventListener("submit", async (event) => {
   }
 });
 
+function showThumbnail(url, title) {
+  const thumbnail = $("thumbnail");
+  const placeholder = $("thumbnail-placeholder");
+  thumbnail.onload = () => {
+    thumbnail.hidden = false;
+    placeholder.hidden = true;
+  };
+  thumbnail.onerror = () => {
+    thumbnail.hidden = true;
+    placeholder.hidden = false;
+    thumbnail.removeAttribute("src");
+  };
+  thumbnail.alt = title ? `${title}封面` : "内容封面";
+  if (!url) {
+    thumbnail.onerror();
+    return;
+  }
+  placeholder.hidden = false;
+  thumbnail.hidden = true;
+  thumbnail.src = url;
+}
+
 function render(data) {
   currentResult = data;
   const meta = data.metadata;
-  $("thumbnail").src = meta.thumbnail || "";
-  $("thumbnail").style.display = meta.thumbnail ? "block" : "none";
+  showThumbnail(meta.thumbnail, meta.title);
   $("platform").textContent = meta.platform;
   $("video-title").textContent = meta.title;
-  const mediaSize = meta.content_type === "image_carousel"
+  const mediaSize = meta.content_type === "article"
+    ? "文章"
+    : meta.content_type === "upload_bundle"
+      ? `多模态组合${meta.image_count ? ` / ${meta.image_count} 张图片` : ""}`
+    : meta.content_type === "image_carousel"
     ? `${meta.image_count || 0} 张图片`
     : meta.duration_seconds
       ? `${Math.round(meta.duration_seconds / 60 * 10) / 10} 分钟`

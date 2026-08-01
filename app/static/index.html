@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="MiMo Trust 从视频信息提取到多源证据核实的全链路工作台">
   <title>MiMo Trust - 全链路信源核实</title>
-  <link rel="stylesheet" href="/static/app.css?v=0.4.0">
+  <link rel="stylesheet" href="/static/app.css?v=0.5.1">
 </head>
 <body>
   <div class="app-shell">
@@ -13,13 +13,13 @@
       <div class="content-canvas">
         <form class="command-bar" id="form">
           <div class="command-inner">
-            <label class="sr-only" for="url">视频网址或手机分享文本</label>
+            <label class="sr-only" for="url">文章或平台网址、手机分享文本或待核验文字</label>
             <div class="field input-field">
               <i class="ui-icon" data-lucide="search" aria-hidden="true"></i>
-              <input id="url" type="text" required autocomplete="url" maxlength="10000"
-                placeholder="粘贴视频链接或手机分享文本">
+              <input id="url" type="text" autocomplete="off" maxlength="10000"
+                placeholder="粘贴链接、分享文本，或直接输入需要核验的文字">
               <button class="help-button tooltip" type="button" aria-label="支持的输入"
-                data-tooltip="支持抖音、B站、YouTube 完整链接、短链与手机分享文本。">
+                data-tooltip="支持直接输入文字，以及文章、快手、微博、小红书、视频号、抖音、B站和 YouTube 链接。">
                 <i data-lucide="circle-help" aria-hidden="true"></i>
               </button>
             </div>
@@ -56,7 +56,13 @@
           <div class="result" id="result">
             <div class="result-grid">
               <aside class="media">
-                <img class="thumbnail" id="thumbnail" alt="视频封面">
+                <div class="thumbnail-frame">
+                  <img class="thumbnail" id="thumbnail" alt="内容封面" hidden>
+                  <div class="thumbnail-placeholder" id="thumbnail-placeholder">
+                    <i data-lucide="image-off" aria-hidden="true"></i>
+                    <span>暂无可用封面</span>
+                  </div>
+                </div>
                 <div class="eyebrow" id="platform"></div>
                 <h1 class="video-title" id="video-title"></h1>
                 <div class="meta" id="meta"></div>
@@ -260,6 +266,6 @@
   </div>
 
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
-  <script src="/static/app.js?v=0.4.0"></script>
+  <script src="/static/app.js?v=0.5.1"></script>
 </body>
 </html>

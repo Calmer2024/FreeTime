@@ -1,6 +1,6 @@
 [project]
 name = "mimo-video-summary-demo"
-version = "0.4.0"
+version = "0.5.0"
 description = "Low-cost multimodal information extraction demo for MiMo Trust"
 requires-python = ">=3.10"
 dependencies = [
@@ -10,6 +10,7 @@ dependencies = [
   "imageio-ffmpeg>=0.6,<1",
   "openai>=1.99,<2",
   "playwright>=1.61,<2",
+  "python-multipart>=0.0.20,<1",
   "python-dotenv>=1.1,<2",
   "uvicorn[standard]>=0.35,<1",
   "yt-dlp>=2026.1.29",
@@ -22,3 +23,6 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+include = ["app*"]

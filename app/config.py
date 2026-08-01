@@ -24,6 +24,10 @@ class Settings:
     cache_ttl_seconds: int = int(os.getenv("CACHE_TTL_SECONDS", "86400"))
     ytdlp_cookies_file: str = os.getenv("YTDLP_COOKIES_FILE", "").strip()
     ytdlp_user_agent: str = os.getenv("YTDLP_USER_AGENT", "").strip()
+    kuaishou_cookies_file: str = os.getenv("KUAISHOU_COOKIES_FILE", "").strip()
+    kuaishou_user_agent: str = os.getenv("KUAISHOU_USER_AGENT", "").strip()
+    channels_cookies_file: str = os.getenv("WECHAT_CHANNELS_COOKIES_FILE", "").strip()
+    channels_user_agent: str = os.getenv("WECHAT_CHANNELS_USER_AGENT", "").strip()
     douyin_auto_cookies: bool = (
         os.getenv("DOUYIN_AUTO_COOKIES", "true").strip().lower()
         in {"1", "true", "yes", "on"}

@@ -3,7 +3,7 @@ from __future__ import annotations
 import ipaddress
 import re
 import socket
-from urllib.parse import parse_qs, urljoin, urlparse
+from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 
 import httpx
 
@@ -15,8 +15,18 @@ ALLOWED_HOST_SUFFIXES = (
     "b23.tv",
     "douyin.com",
     "iesdouyin.com",
+    "kuaishou.com",
+    "gifshow.com",
+    "weibo.com",
+    "weibo.cn",
+    "xiaohongshu.com",
+    "xhslink.com",
+    "channels.weixin.qq.com",
+    "weixin.qq.com",
 )
-SHORT_LINK_HOSTS = {"b23.tv", "v.douyin.com"}
+SHORT_LINK_HOSTS = {
+    "b23.tv", "v.douyin.com", "v.kuaishou.com", "xhslink.com"
+}
 URL_PATTERN = re.compile(
     r"https?://[A-Za-z0-9\-._~:/?#\[\]@!$&()*+,;=%]+", re.IGNORECASE
 )
@@ -34,16 +44,24 @@ class UnsafeUrlError(ValueError):
 
 
 def validate_video_url(url: str) -> None:
+    validate_public_url(url)
     parsed = urlparse(url)
-    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
-        raise UnsafeUrlError("只接受有效的 HTTP(S) 视频网址")
-
     hostname = parsed.hostname.lower().rstrip(".")
     if not any(
         hostname == suffix or hostname.endswith(f".{suffix}")
         for suffix in ALLOWED_HOST_SUFFIXES
     ):
-        raise UnsafeUrlError("Demo 当前仅开放抖音、B 站和 YouTube 链接")
+        raise UnsafeUrlError(
+            "当前平台入口支持抖音、B站、YouTube、快手、微博、小红书和视频号"
+        )
+
+
+def validate_public_url(url: str) -> None:
+    """Validate an arbitrary public article URL without weakening the SSRF boundary."""
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise UnsafeUrlError("只接受有效的 HTTP(S) 网址")
+    hostname = parsed.hostname.lower().rstrip(".")
 
     try:
         addresses = {
@@ -94,6 +112,17 @@ def canonicalize_video_url(url: str) -> str:
         modal_id = parse_qs(parsed.query).get("modal_id", [""])[0]
         if re.fullmatch(r"\d+", modal_id):
             return f"https://www.douyin.com/video/{modal_id}"
+    if hostname.endswith("xiaohongshu.com"):
+        match = re.search(r"/(?:explore|discovery/item)/([\da-z]+)", path, re.IGNORECASE)
+        if match:
+            canonical = f"https://www.xiaohongshu.com/explore/{match.group(1)}"
+            query = parse_qs(parsed.query)
+            access_query = {
+                key: query[key][0]
+                for key in ("xsec_token", "xsec_source")
+                if query.get(key) and query[key][0]
+            }
+            return f"{canonical}?{urlencode(access_query)}" if access_query else canonical
     return url
 
 
@@ -101,12 +130,18 @@ def extract_video_url(value: str) -> str:
     """Extract the first HTTP(S) URL from a URL or mobile share message."""
     match = URL_PATTERN.search(value.strip())
     if not match:
-        raise UnsafeUrlError("分享内容中没有找到有效的 HTTP(S) 视频网址")
+        raise UnsafeUrlError("输入内容中没有找到有效的 HTTP(S) 网址")
     return match.group(0).rstrip(TRAILING_SHARE_PUNCTUATION)
 
 
 def _is_short_link(url: str) -> bool:
-    return (urlparse(url).hostname or "").lower().rstrip(".") in SHORT_LINK_HOSTS
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower().rstrip(".")
+    return (
+        host in SHORT_LINK_HOSTS
+        or (host.endswith("kuaishou.com") and parsed.path.startswith("/f/"))
+        or (host == "weixin.qq.com" and parsed.path.startswith("/sph/"))
+    )
 
 
 def resolve_video_input(value: str) -> str:
@@ -146,3 +181,17 @@ def resolve_video_input(value: str) -> str:
             current = next_url
 
     raise UnsafeUrlError(f"短链接跳转超过 {REDIRECT_LIMIT} 次，已停止解析")
+
+
+def resolve_content_input(value: str, *, platform_only: bool = False) -> str:
+    """Resolve share text for either a supported platform item or a public article."""
+    candidate = extract_video_url(value)
+    hostname = (urlparse(candidate).hostname or "").lower().rstrip(".")
+    is_platform = any(
+        hostname == suffix or hostname.endswith(f".{suffix}")
+        for suffix in ALLOWED_HOST_SUFFIXES
+    )
+    if platform_only or is_platform:
+        return resolve_video_input(value)
+    validate_public_url(candidate)
+    return candidate
