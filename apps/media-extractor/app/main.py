@@ -31,13 +31,15 @@ from app.thumbnails import thumbnail_store
 
 
 app = FastAPI(
-    title="FreeTime Media Extractor",
+    title="FreeTime",
     version="1.0.0",
     docs_url="/api/docs",
 )
 cache = ResultCache(settings.cache_ttl_seconds)
 static_dir = Path(__file__).parent.parent / "static"
+portal_dir = Path(__file__).parent.parent.parent.parent / "portal"
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
+app.mount("/portal", StaticFiles(directory=portal_dir), name="portal")
 
 
 async def _stabilize_result_thumbnail(result: AnalyzeResponse) -> bool:
@@ -141,7 +143,17 @@ def _ensure_cleaned_article(payload: dict[str, object]) -> dict[str, object]:
 
 
 @app.get("/", include_in_schema=False)
-async def index() -> FileResponse:
+async def portal() -> FileResponse:
+    """FreeTime 主门户入口"""
+    return FileResponse(
+        portal_dir / "index.html",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.get("/extractor", include_in_schema=False)
+async def extractor_index() -> FileResponse:
+    """流媒体内容提取器入口"""
     return FileResponse(
         static_dir / "index.html",
         headers={"Cache-Control": "no-store"},
