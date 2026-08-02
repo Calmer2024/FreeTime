@@ -188,6 +188,7 @@
       display: flex;
       flex-direction: column;
       overflow: hidden;
+      position: relative;
     }
 
     .result-grid .analysis .result-navigation {
@@ -197,12 +198,13 @@
     .result-grid .analysis .result-view {
       flex: 1;
       overflow-y: auto;
+      padding-right: 0;
     }
 
-    /* 内容区域内部滚动条 */
+    /* 内容区域内部滚动条 - 卡片最右侧 */
     .result-view::-webkit-scrollbar,
     .cleaned-article::-webkit-scrollbar {
-      width: 4px;
+      width: 5px;
     }
 
     .result-view::-webkit-scrollbar-track,
@@ -212,14 +214,31 @@
 
     .result-view::-webkit-scrollbar-thumb,
     .cleaned-article::-webkit-scrollbar-thumb {
-      background: rgba(0, 0, 0, 0.1);
-      border-radius: 2px;
+      background: rgba(0, 0, 0, 0.12);
+      border-radius: 3px;
+    }
+
+    .result-view::-webkit-scrollbar-thumb:hover,
+    .cleaned-article::-webkit-scrollbar-thumb:hover {
+      background: rgba(0, 0, 0, 0.2);
     }
 
     .result-view,
     .cleaned-article {
       scrollbar-width: thin;
-      scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
+      scrollbar-color: rgba(0, 0, 0, 0.12) transparent;
+    }
+
+    /* 正文内容固定高度 */
+    .cleaned-article {
+      max-height: 400px;
+      overflow-y: auto;
+      padding: 16px;
+      background: var(--surface-muted);
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      line-height: 1.8;
+      color: var(--ink);
     }
 
     /* 响应式 */
