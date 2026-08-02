@@ -269,9 +269,21 @@
       scrollbar-color: rgba(0, 0, 0, 0.08) transparent;
     }
 
-    /* 正文内容固定高度 */
+    /* 正文内容固定高度 - 无外部滚动条 */
+    .view-article {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .view-article .section-heading {
+      flex-shrink: 0;
+    }
+
     .cleaned-article {
-      max-height: 400px;
+      flex: 1;
+      min-height: 0;
+      max-height: 50vh;
       overflow-y: auto;
       padding: 16px;
       background: var(--surface-muted);
