@@ -3,127 +3,336 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="FreeTime 流媒体内容提取器 - 一键提取热门平台内容">
-  <title>流媒体内容提取器 - FreeTime</title>
+  <meta name="description" content="DrillKnowledge - 深度知识提取工具">
+  <title>DrillKnowledge - FreeTime</title>
   <link rel="stylesheet" href="/static/common.css">
   <link rel="stylesheet" href="/static/app.css?v=1.0.0">
+  <style>
+    /* DrillKnowledge 专用样式 */
+    .dk-header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: saturate(180%) blur(20px);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
+      border-bottom: 0.5px solid var(--ft-border);
+    }
+
+    .dk-search-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 20px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .dk-nav {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .dk-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 8px 12px;
+      color: var(--ft-primary);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      border-radius: var(--ft-radius-sm);
+      transition: background 0.2s ease;
+    }
+
+    .dk-back:hover {
+      background: rgba(0, 122, 255, 0.08);
+    }
+
+    .dk-back svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    .dk-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding-right: 12px;
+      border-right: 1px solid var(--ft-border);
+      margin-right: 4px;
+    }
+
+    .dk-logo-icon {
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #f43f5e, #ec4899);
+      border-radius: var(--ft-radius-sm);
+    }
+
+    .dk-logo-icon svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    .dk-logo-text {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--ft-text);
+      letter-spacing: -0.3px;
+    }
+
+    .dk-search-form {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .dk-search-input-wrapper {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 16px;
+      background: var(--ft-bg);
+      border: 1px solid var(--ft-border);
+      border-radius: 999px;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .dk-search-input-wrapper:focus-within {
+      border-color: var(--ft-primary);
+      box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.12);
+    }
+
+    .dk-search-input-wrapper svg {
+      width: 18px;
+      height: 18px;
+      color: var(--ft-text-tertiary);
+      flex-shrink: 0;
+    }
+
+    .dk-search-input {
+      flex: 1;
+      min-width: 0;
+      border: none;
+      background: transparent;
+      font-size: 15px;
+      color: var(--ft-text);
+      outline: none;
+    }
+
+    .dk-search-input::placeholder {
+      color: var(--ft-text-tertiary);
+    }
+
+    .dk-mode-select {
+      width: 120px;
+      padding: 10px 32px 10px 12px;
+      font-size: 14px;
+      background: var(--ft-bg);
+      border: 1px solid var(--ft-border);
+      border-radius: 999px;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%238E8E93' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .dk-mode-select:focus {
+      outline: none;
+      border-color: var(--ft-primary);
+    }
+
+    .dk-submit-btn {
+      width: 44px;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--ft-primary);
+      color: white;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      transition: background 0.2s ease, transform 0.1s ease;
+      flex-shrink: 0;
+    }
+
+    .dk-submit-btn:hover {
+      background: var(--ft-primary-hover);
+    }
+
+    .dk-submit-btn:active {
+      transform: scale(0.95);
+    }
+
+    .dk-submit-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .dk-submit-btn svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    /* 内容区域 */
+    .dk-content {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      height: calc(100vh - 69px);
+      overflow-y: auto;
+    }
+
+    /* 响应式 */
+    @media (max-width: 768px) {
+      .dk-logo-text {
+        display: none;
+      }
+
+      .dk-mode-select {
+        width: 100px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .dk-mode-select {
+        display: none;
+      }
+    }
+  </style>
 </head>
 <body>
   <div class="app-shell">
-    <header class="ft-header">
-      <a href="/" class="ft-back">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M19 12H5M12 19l-7-7 7-7"/>
-        </svg>
-        <span>FreeTime</span>
-      </a>
-      <div class="ft-app-icon" style="background: linear-gradient(135deg, #f43f5e, #ec4899);">
-        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polygon points="5 3 19 12 5 21 5 3"/>
-        </svg>
-      </div>
-      <div class="ft-app-title">
-        <h1>流媒体内容提取器</h1>
+    <!-- 顶部搜索栏 -->
+    <header class="dk-header">
+      <div class="dk-search-bar">
+        <!-- 导航区域：返回按钮 + Logo -->
+        <nav class="dk-nav">
+          <a href="/" class="dk-back">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M19 12H5M12 19l-7-7 7-7"/>
+            </svg>
+          </a>
+          <div class="dk-logo">
+            <div class="dk-logo-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"/>
+                <path d="M21 21l-4.35-4.35"/>
+              </svg>
+            </div>
+            <span class="dk-logo-text">DrillKnowledge</span>
+          </div>
+        </nav>
+
+        <!-- 搜索表单 -->
+        <form class="dk-search-form" id="form">
+          <div class="dk-search-input-wrapper">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"/>
+              <path d="M21 21l-4.35-4.35"/>
+            </svg>
+            <input class="dk-search-input" id="url" type="text" autocomplete="off" maxlength="10000"
+              placeholder="粘贴链接、分享文本，或直接输入需要提取的内容">
+          </div>
+          <select class="dk-mode-select" id="mode" aria-label="提取模式">
+            <option value="auto">智能提取</option>
+            <option value="visual">全模态</option>
+          </select>
+          <button class="dk-submit-btn" id="submit" type="submit" aria-label="开始提取">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="5" y1="12" x2="19" y2="12"/>
+              <polyline points="12 5 19 12 12 19"/>
+            </svg>
+          </button>
+        </form>
       </div>
     </header>
-    <main class="content-scroll" id="content-scroll">
-      <div class="content-canvas">
-        <form class="command-bar" id="form">
-          <div class="command-inner">
-            <label class="sr-only" for="url">粘贴链接或分享文本</label>
-            <div class="field input-field">
-              <i class="ui-icon" data-lucide="search" aria-hidden="true"></i>
-              <input id="url" type="text" autocomplete="off" maxlength="10000"
-                placeholder="粘贴链接、分享文本，或直接输入需要提取的文字">
-              <button class="help-button tooltip" type="button" aria-label="支持的输入"
-                data-tooltip="支持直接输入文字，以及文章、快手、微博、小红书、视频号、抖音、B站和 YouTube 链接。">
-                <i data-lucide="circle-help" aria-hidden="true"></i>
-              </button>
-            </div>
-            <div class="field select-field">
-              <i class="ui-icon" data-lucide="scan-search" aria-hidden="true"></i>
-              <label class="sr-only" for="mode">提取模式</label>
-              <select id="mode" aria-label="提取模式">
-                <option value="auto">智能提取</option>
-                <option value="visual">全模态</option>
-              </select>
-              <i class="select-chevron" data-lucide="chevron-down" aria-hidden="true"></i>
-            </div>
-            <button class="primary-button tooltip" id="submit" type="submit"
-              aria-label="开始提取" data-tooltip="开始提取">
-              <i class="button-icon" data-lucide="scan-line" aria-hidden="true"></i>
-            </button>
-          </div>
-        </form>
 
-        <section class="panel workbench" id="workbench" aria-live="polite" hidden>
-          <div class="loading" id="loading">
-            <div class="loading-head">
-              <div class="loading-state">
-                <span class="spinner" aria-hidden="true"></span>
-                <strong id="loading-label">正在解析链接</strong>
+    <!-- 主内容区域 -->
+    <main class="dk-content" id="content-scroll">
+      <!-- 加载状态 -->
+      <section class="panel workbench" id="workbench" aria-live="polite" hidden>
+        <div class="loading" id="loading">
+          <div class="loading-head">
+            <div class="loading-state">
+              <span class="spinner" aria-hidden="true"></span>
+              <strong id="loading-label">正在解析链接</strong>
+            </div>
+            <span class="timer" id="timer">0.0s</span>
+          </div>
+          <div class="skeleton skeleton-wide"></div>
+          <div class="skeleton skeleton-medium"></div>
+          <div class="skeleton skeleton-short"></div>
+        </div>
+
+        <!-- 结果展示 -->
+        <div class="result" id="result">
+          <div class="result-grid">
+            <aside class="media">
+              <div class="thumbnail-frame">
+                <img class="thumbnail" id="thumbnail" alt="内容封面" hidden>
+                <div class="thumbnail-placeholder" id="thumbnail-placeholder">
+                  <i data-lucide="image-off" aria-hidden="true"></i>
+                  <span>暂无可用封面</span>
+                </div>
               </div>
-              <span class="timer" id="timer">0.0s</span>
-            </div>
-            <div class="skeleton skeleton-wide"></div>
-            <div class="skeleton skeleton-medium"></div>
-            <div class="skeleton skeleton-short"></div>
-          </div>
+              <div class="eyebrow" id="platform"></div>
+              <h1 class="video-title" id="video-title"></h1>
+              <div class="meta" id="meta"></div>
+              <button class="copy-button" id="copy-content" type="button" aria-label="一键复制内容">
+                <i data-lucide="copy" aria-hidden="true"></i>
+                <span>一键复制</span>
+              </button>
+            </aside>
 
-          <div class="result" id="result">
-            <div class="result-grid">
-              <aside class="media">
-                <div class="thumbnail-frame">
-                  <img class="thumbnail" id="thumbnail" alt="内容封面" hidden>
-                  <div class="thumbnail-placeholder" id="thumbnail-placeholder">
-                    <i data-lucide="image-off" aria-hidden="true"></i>
-                    <span>暂无可用封面</span>
-                  </div>
+            <article class="analysis">
+              <div class="result-navigation">
+                <div class="result-tabs" role="tablist" aria-label="结果视图">
+                  <button class="result-tab active" id="tab-overview" type="button" role="tab"
+                    aria-selected="true" aria-controls="view-overview" data-result-view="overview">
+                    <i data-lucide="align-left" aria-hidden="true"></i><span>概览</span>
+                  </button>
+                  <button class="result-tab" id="tab-structured" type="button" role="tab"
+                    aria-selected="false" aria-controls="view-structured" data-result-view="structured">
+                    <i data-lucide="braces" aria-hidden="true"></i><span>结构化数据</span>
+                  </button>
+                  <button class="result-tab" id="tab-article" type="button" role="tab"
+                    aria-selected="false" aria-controls="view-article" data-result-view="article">
+                    <i data-lucide="file-text" aria-hidden="true"></i><span>完整全文</span>
+                  </button>
+                  <button class="result-tab" id="tab-process" type="button" role="tab"
+                    aria-selected="false" aria-controls="view-process" data-result-view="process">
+                    <i data-lucide="activity" aria-hidden="true"></i><span>处理详情</span>
+                  </button>
                 </div>
-                <div class="eyebrow" id="platform"></div>
-                <h1 class="video-title" id="video-title"></h1>
-                <div class="meta" id="meta"></div>
-                <button class="copy-button" id="copy-content" type="button" aria-label="一键复制内容">
-                  <i data-lucide="copy" aria-hidden="true"></i>
-                  <span>一键复制</span>
-                </button>
-              </aside>
+                <span class="strategy" id="strategy"></span>
+              </div>
 
-              <article class="analysis">
-                <div class="result-navigation">
-                  <div class="result-tabs" role="tablist" aria-label="结果视图">
-                    <button class="result-tab active" id="tab-overview" type="button" role="tab"
-                      aria-selected="true" aria-controls="view-overview" data-result-view="overview">
-                      <i data-lucide="align-left" aria-hidden="true"></i><span>概览</span>
-                    </button>
-                    <button class="result-tab" id="tab-structured" type="button" role="tab"
-                      aria-selected="false" aria-controls="view-structured" data-result-view="structured">
-                      <i data-lucide="braces" aria-hidden="true"></i><span>结构化数据</span>
-                    </button>
-                    <button class="result-tab" id="tab-article" type="button" role="tab"
-                      aria-selected="false" aria-controls="view-article" data-result-view="article">
-                      <i data-lucide="file-text" aria-hidden="true"></i><span>完整全文</span>
-                    </button>
-                    <button class="result-tab" id="tab-process" type="button" role="tab"
-                      aria-selected="false" aria-controls="view-process" data-result-view="process">
-                      <i data-lucide="activity" aria-hidden="true"></i><span>处理详情</span>
-                    </button>
-                  </div>
-                  <span class="strategy" id="strategy"></span>
-                </div>
-
-                <section class="result-view active" id="view-overview" role="tabpanel"
-                  aria-labelledby="tab-overview" data-view-panel="overview">
-                  <section class="view-section overview-trace">
-                    <div class="section-heading">
-                      <div>
-                        <i class="section-icon" data-lucide="workflow" aria-hidden="true"></i>
-                        <h2>处理轨迹</h2>
-                      </div>
+              <section class="result-view active" id="view-overview" role="tabpanel"
+                aria-labelledby="tab-overview" data-view-panel="overview">
+                <section class="view-section overview-trace">
+                  <div class="section-heading">
+                    <div>
+                      <i class="section-icon" data-lucide="workflow" aria-hidden="true"></i>
+                      <h2>处理轨迹</h2>
                     </div>
-                    <div class="trace" id="trace"></div>
-                  </section>
-                  <section class="view-section">
+                  </div>
+                  <div class="trace" id="trace"></div>
+                </section>
+                <section class="view-section">
                   <div class="section-heading">
                     <div>
                       <i class="section-icon" data-lucide="align-left" aria-hidden="true"></i>
@@ -134,122 +343,122 @@
                   <div class="coverage" id="coverage"></div>
                   <div class="points" id="points"></div>
                   <div class="topics" id="topics"></div>
-                  </section>
                 </section>
+              </section>
 
-                <section class="result-view" id="view-structured" role="tabpanel"
-                  aria-labelledby="tab-structured" data-view-panel="structured" hidden>
-                  <section class="view-section">
-                    <div class="section-heading">
-                      <div>
-                        <i class="section-icon" data-lucide="braces" aria-hidden="true"></i>
-                        <h2>结构化数据</h2>
-                      </div>
-                      <button class="help-button tooltip" type="button" aria-label="结构化数据说明"
-                        data-tooltip="从内容中提取的结构化信息，包含内容主题、原子主张和隐性观点。">
-                        <i data-lucide="circle-help" aria-hidden="true"></i>
-                      </button>
-                    </div>
-                    <div class="structured-output" id="structured-output"></div>
-                    <details>
-                      <summary>
-                        <i class="disclosure-icon" data-lucide="code-2" aria-hidden="true"></i>
-                        <span>标准 JSON</span>
-                        <i class="summary-chevron" data-lucide="chevron-down" aria-hidden="true"></i>
-                      </summary>
-                      <pre class="json-output" id="json-output"></pre>
-                    </details>
-                  </section>
-                </section>
-
-                <section class="result-view" id="view-article" role="tabpanel"
-                  aria-labelledby="tab-article" data-view-panel="article" hidden>
+              <section class="result-view" id="view-structured" role="tabpanel"
+                aria-labelledby="tab-structured" data-view-panel="structured" hidden>
+                <section class="view-section">
                   <div class="section-heading">
                     <div>
-                      <i class="section-icon" data-lucide="file-text" aria-hidden="true"></i>
-                      <h2>完整全文</h2>
+                      <i class="section-icon" data-lucide="braces" aria-hidden="true"></i>
+                      <h2>结构化数据</h2>
                     </div>
-                    <button class="copy-button-sm" id="copy-article" type="button" aria-label="复制全文">
-                      <i data-lucide="copy" aria-hidden="true"></i>
-                      <span>复制</span>
+                    <button class="help-button tooltip" type="button" aria-label="结构化数据说明"
+                      data-tooltip="从内容中提取的结构化信息，包含内容主题、原子主张和隐性观点。">
+                      <i data-lucide="circle-help" aria-hidden="true"></i>
                     </button>
                   </div>
-                  <article class="cleaned-article" id="cleaned-article"></article>
+                  <div class="structured-output" id="structured-output"></div>
+                  <details>
+                    <summary>
+                      <i class="disclosure-icon" data-lucide="code-2" aria-hidden="true"></i>
+                      <span>标准 JSON</span>
+                      <i class="summary-chevron" data-lucide="chevron-down" aria-hidden="true"></i>
+                    </summary>
+                    <pre class="json-output" id="json-output"></pre>
+                  </details>
                 </section>
+              </section>
 
-                <section class="result-view" id="view-process" role="tabpanel"
-                  aria-labelledby="tab-process" data-view-panel="process" hidden>
-                  <section class="view-section">
-                    <div class="section-heading">
-                      <div>
-                        <i class="section-icon" data-lucide="timer" aria-hidden="true"></i>
-                        <h2>全流程总览</h2>
-                      </div>
+              <section class="result-view" id="view-article" role="tabpanel"
+                aria-labelledby="tab-article" data-view-panel="article" hidden>
+                <div class="section-heading">
+                  <div>
+                    <i class="section-icon" data-lucide="file-text" aria-hidden="true"></i>
+                    <h2>完整全文</h2>
+                  </div>
+                  <button class="copy-button-sm" id="copy-article" type="button" aria-label="复制全文">
+                    <i data-lucide="copy" aria-hidden="true"></i>
+                    <span>复制</span>
+                  </button>
+                </div>
+                <article class="cleaned-article" id="cleaned-article"></article>
+              </section>
+
+              <section class="result-view" id="view-process" role="tabpanel"
+                aria-labelledby="tab-process" data-view-panel="process" hidden>
+                <section class="view-section">
+                  <div class="section-heading">
+                    <div>
+                      <i class="section-icon" data-lucide="timer" aria-hidden="true"></i>
+                      <h2>全流程总览</h2>
                     </div>
-                    <div class="pipeline-summary" id="full-pipeline-summary"></div>
-                    <div class="trace process-trace" id="process-trace"></div>
-                  </section>
-                  <section class="view-section">
-                    <div class="section-heading">
-                      <div>
-                        <i class="section-icon" data-lucide="braces" aria-hidden="true"></i>
-                        <h2>LLM 结构化输入（完整）</h2>
-                      </div>
+                  </div>
+                  <div class="pipeline-summary" id="full-pipeline-summary"></div>
+                  <div class="trace process-trace" id="process-trace"></div>
+                </section>
+                <section class="view-section">
+                  <div class="section-heading">
+                    <div>
+                      <i class="section-icon" data-lucide="braces" aria-hidden="true"></i>
+                      <h2>LLM 结构化输入（完整）</h2>
                     </div>
-                    <p class="structured-input-meta" id="llm-structured-input-meta"></p>
-                    <pre class="structured-input" id="llm-structured-input"></pre>
-                  </section>
-                  <section class="view-section">
-                    <div class="section-heading">
-                      <div>
-                        <i class="section-icon" data-lucide="gauge" aria-hidden="true"></i>
-                        <h2>信息提取覆盖</h2>
-                      </div>
+                  </div>
+                  <p class="structured-input-meta" id="llm-structured-input-meta"></p>
+                  <pre class="structured-input" id="llm-structured-input"></pre>
+                </section>
+                <section class="view-section">
+                  <div class="section-heading">
+                    <div>
+                      <i class="section-icon" data-lucide="gauge" aria-hidden="true"></i>
+                      <h2>信息提取覆盖</h2>
                     </div>
-                    <div class="plan-badges" id="plan-badges"></div>
-                    <div class="coverage-grid" id="coverage-grid"></div>
-                  </section>
-                  <section class="view-section">
-                    <div class="section-heading">
-                      <div>
-                        <i class="section-icon" data-lucide="layers-3" aria-hidden="true"></i>
-                        <h2>成本阶梯</h2>
-                      </div>
+                  </div>
+                  <div class="plan-badges" id="plan-badges"></div>
+                  <div class="coverage-grid" id="coverage-grid"></div>
+                </section>
+                <section class="view-section">
+                  <div class="section-heading">
+                    <div>
+                      <i class="section-icon" data-lucide="layers-3" aria-hidden="true"></i>
+                      <h2>成本阶梯</h2>
                     </div>
+                  </div>
                   <div class="cost-ladder" id="cost-ladder"></div>
-                  </section>
-                  <section class="view-section">
-                    <div class="section-heading">
-                      <div>
-                        <i class="section-icon" data-lucide="scan-text" aria-hidden="true"></i>
-                        <h2>关键帧 OCR</h2>
-                      </div>
-                    </div>
-                  <div class="keyframe-list" id="keyframes"></div>
-                  </section>
                 </section>
-              </article>
-            </div>
+                <section class="view-section">
+                  <div class="section-heading">
+                    <div>
+                      <i class="section-icon" data-lucide="scan-text" aria-hidden="true"></i>
+                      <h2>关键帧 OCR</h2>
+                    </div>
+                  </div>
+                  <div class="keyframe-list" id="keyframes"></div>
+                </section>
+              </section>
+            </article>
           </div>
+        </div>
 
-          <div class="error" id="error" role="alert"></div>
-        </section>
+        <div class="error" id="error" role="alert"></div>
+      </section>
 
-        <section class="panel history">
-          <div class="history-head">
-            <div class="section-heading">
-              <div><i class="section-icon" data-lucide="history" aria-hidden="true"></i><h2>最近提取</h2></div>
-            </div>
-            <button class="icon-button danger-quiet tooltip" id="clear-history" type="button"
-              aria-label="清空全部缓存" data-tooltip="清空全部缓存">
-              <i data-lucide="trash-2" aria-hidden="true"></i>
-            </button>
+      <!-- 历史记录 -->
+      <section class="panel history">
+        <div class="history-head">
+          <div class="section-heading">
+            <div><i class="section-icon" data-lucide="history" aria-hidden="true"></i><h2>最近提取</h2></div>
           </div>
-          <div class="history-list" id="history-list">
-            <div class="history-empty">正在读取记录</div>
-          </div>
-        </section>
-      </div>
+          <button class="icon-button danger-quiet tooltip" id="clear-history" type="button"
+            aria-label="清空全部缓存" data-tooltip="清空全部缓存">
+            <i data-lucide="trash-2" aria-hidden="true"></i>
+          </button>
+        </div>
+        <div class="history-list" id="history-list">
+          <div class="history-empty">正在读取记录</div>
+        </div>
+      </section>
     </main>
   </div>
 
