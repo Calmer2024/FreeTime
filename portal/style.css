@@ -428,177 +428,192 @@ body {
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(8px);
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(12px);
 }
 
 .settings-content {
   position: relative;
-  width: 480px;
-  max-height: 85vh;
-  background: rgba(15, 15, 25, 0.95);
-  border-radius: 28px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 25px 80px rgba(0, 0, 0, 0.6),
-              0 0 100px rgba(100, 150, 255, 0.05);
+  width: 560px;
+  background: rgba(20, 20, 30, 0.85);
+  border-radius: 20px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  backdrop-filter: blur(40px);
-}
-
-/* 弹窗光束效果 */
-.settings-content::before {
-  content: '';
-  position: absolute;
-  top: -50%;
-  left: -50%;
-  width: 200%;
-  height: 200%;
-  background: linear-gradient(
-    45deg,
-    transparent 40%,
-    rgba(255, 255, 255, 0.03) 45%,
-    rgba(255, 255, 255, 0.05) 50%,
-    rgba(255, 255, 255, 0.03) 55%,
-    transparent 60%
-  );
-  transform: rotate(-45deg);
-  pointer-events: none;
-  animation: modalGlow 8s ease-in-out infinite;
-}
-
-@keyframes modalGlow {
-  0%, 100% { transform: rotate(-45deg) translateX(-100%); }
-  50% { transform: rotate(-45deg) translateX(100%); }
+  backdrop-filter: blur(60px);
 }
 
 .settings-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 24px 28px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  position: relative;
-  z-index: 1;
+  padding: 20px 24px 16px;
 }
 
-.settings-header h2 {
-  font-size: 20px;
+.settings-label {
+  font-size: 11px;
   font-weight: 600;
-  color: #fff;
-  margin: 0;
-  letter-spacing: -0.5px;
+  color: var(--text-secondary);
+  letter-spacing: 1.5px;
+  font-family: 'SF Mono', 'Consolas', monospace;
 }
 
 .settings-close {
-  width: 36px;
-  height: 36px;
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.06);
+  background: transparent;
   border: none;
-  border-radius: 10px;
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.2s ease;
+  border-radius: 8px;
 }
 
 .settings-close:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08);
   color: #fff;
 }
 
 .settings-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 28px;
-  position: relative;
-  z-index: 1;
+  padding: 0 24px 24px;
 }
 
-.settings-desc {
+/* 服务商选择器 */
+.provider-select-wrapper {
+  margin-bottom: 20px;
+}
+
+.custom-select {
+  position: relative;
+}
+
+.select-trigger {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.select-trigger:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.provider-logo {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.provider-name {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 500;
+  color: #fff;
+}
+
+.select-arrow {
+  color: var(--text-secondary);
+  transition: transform 0.2s ease;
+}
+
+.custom-select.open .select-arrow {
+  transform: rotate(180deg);
+}
+
+.select-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  background: rgba(30, 30, 45, 0.98);
+  border-radius: 14px;
+  padding: 8px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-8px);
+  transition: all 0.2s ease;
+  backdrop-filter: blur(20px);
+  z-index: 10;
+}
+
+.custom-select.open .select-dropdown {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.select-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s ease;
   font-size: 14px;
   color: var(--text-secondary);
-  margin: 0 0 28px 0;
-  line-height: 1.6;
 }
 
-/* 服务商区块 */
-.provider-section {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 16px;
-  padding: 20px;
-  margin-bottom: 20px;
-  position: relative;
-  overflow: hidden;
+.select-option:hover {
+  background: rgba(255, 255, 255, 0.06);
 }
 
-/* 服务商光束 */
-.provider-section::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 50%;
-  height: 100%;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(255, 255, 255, 0.02),
-    transparent
-  );
-  transform: skewX(-20deg);
-  transition: left 0.6s ease;
-}
-
-.provider-section:hover::before {
-  left: 120%;
-}
-
-.provider-header {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin-bottom: 20px;
-}
-
-.provider-icon {
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 12px;
-  flex-shrink: 0;
-}
-
-.provider-header h3 {
-  font-size: 16px;
-  font-weight: 600;
+.select-option.active {
   color: #fff;
-  margin: 0 0 4px 0;
+  background: rgba(255, 255, 255, 0.08);
 }
 
-.provider-models {
-  font-size: 12px;
-  color: var(--text-secondary);
+/* 小型选择器 */
+.custom-select.small .select-trigger {
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.custom-select.small .model-name {
+  flex: 1;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.custom-select.small .select-dropdown {
+  padding: 6px;
+}
+
+.custom-select.small .select-option {
+  padding: 8px 12px;
+  font-size: 13px;
   font-family: 'SF Mono', 'Consolas', monospace;
-  letter-spacing: 0.5px;
 }
 
-/* 表单 */
-.form-group {
+/* 分隔线 */
+.settings-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06);
+  margin-bottom: 20px;
+}
+
+/* 表单字段 */
+.provider-config {
+  /* 配置区域 */
+}
+
+.form-field {
   margin-bottom: 16px;
 }
 
-.form-group:last-child {
+.form-field:last-child {
   margin-bottom: 0;
 }
 
-.form-group label {
+.form-field label {
   display: block;
   font-size: 11px;
   font-weight: 600;
@@ -609,125 +624,64 @@ body {
   font-family: 'SF Mono', 'Consolas', monospace;
 }
 
-.settings-input,
-.settings-select {
+.settings-input {
   width: 100%;
   padding: 14px 18px;
   font-size: 14px;
-  background: rgba(0, 0, 0, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: none;
+  border-radius: 14px;
   color: #fff;
-  transition: all 0.3s ease;
+  transition: background 0.2s ease;
   font-family: inherit;
 }
 
-.settings-input:focus,
-.settings-select:focus {
+.settings-input:focus {
   outline: none;
-  border-color: rgba(100, 150, 255, 0.4);
-  box-shadow: 0 0 20px rgba(100, 150, 255, 0.1);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .settings-input::placeholder {
   color: rgba(255, 255, 255, 0.25);
 }
 
-.settings-select {
-  cursor: pointer;
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%23666' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 16px center;
-}
-
-.settings-select option {
-  background: #0f0f1a;
-  color: #fff;
-}
-
-/* 当前配置状态 */
-.active-config {
-  margin-top: 24px;
-  padding: 18px;
-  background: rgba(255, 255, 255, 0.03);
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.active-config h4 {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  margin: 0 0 12px 0;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  font-family: 'SF Mono', 'Consolas', monospace;
-}
-
-.config-status {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
-  color: var(--text-secondary);
-}
-
-.config-status .status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.2);
-  transition: all 0.3s ease;
-}
-
-.config-status.active .status-dot {
-  background: #22c55e;
-  box-shadow: 0 0 12px rgba(34, 197, 94, 0.6);
-}
-
 /* 底部按钮 */
 .settings-footer {
-  display: flex;
-  gap: 14px;
-  padding: 20px 28px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  position: relative;
-  z-index: 1;
+  padding: 0 24px 24px;
+  text-align: center;
 }
 
-.settings-btn-secondary,
-.settings-btn-primary {
-  flex: 1;
-  padding: 14px 20px;
-  font-size: 14px;
+.settings-save-btn {
+  width: 100%;
+  padding: 14px 24px;
+  font-size: 15px;
   font-weight: 600;
-  border: none;
-  border-radius: 14px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  letter-spacing: 0.5px;
-}
-
-.settings-btn-secondary {
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.settings-btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.settings-btn-primary {
   background: #fff;
   color: #000;
-  font-weight: 700;
+  border: none;
+  border-radius: 50px;
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
 
-.settings-btn-primary:hover {
+.settings-save-btn:hover {
   background: #f0f0f0;
-  box-shadow: 0 8px 30px rgba(255, 255, 255, 0.2);
+  transform: scale(1.01);
+}
+
+.settings-cancel-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  margin-top: 12px;
+  padding: 4px 8px;
+  transition: color 0.2s ease;
+}
+
+.settings-cancel-btn:hover {
+  color: #fff;
 }
 
 /* 响应式 */
@@ -753,25 +707,7 @@ body {
   }
 
   .settings-content {
-    width: 95%;
-    max-height: 90vh;
+    width: 92%;
+    margin: 0 16px;
   }
-}
-
-/* 滚动条样式 */
-.settings-body::-webkit-scrollbar {
-  width: 4px;
-}
-
-.settings-body::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.settings-body::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 2px;
-}
-
-.settings-body::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
 }
