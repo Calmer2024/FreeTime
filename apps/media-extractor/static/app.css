@@ -887,3 +887,37 @@ details[open] .summary-chevron { transform: rotate(180deg); }
 .source-link {
   /* These styles are kept for backward compatibility but won't be used */
 }
+
+/* 自定义滚动条 */
+.content-scroll::-webkit-scrollbar,
+.history::-webkit-scrollbar,
+.result::-webkit-scrollbar {
+  width: 5px;
+}
+
+.content-scroll::-webkit-scrollbar-track,
+.history::-webkit-scrollbar-track,
+.result::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.content-scroll::-webkit-scrollbar-thumb,
+.history::-webkit-scrollbar-thumb,
+.result::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 3px;
+}
+
+.content-scroll::-webkit-scrollbar-thumb:hover,
+.history::-webkit-scrollbar-thumb:hover,
+.result::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.18);
+}
+
+/* Firefox 滚动条 */
+.content-scroll,
+.history,
+.result {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
+}

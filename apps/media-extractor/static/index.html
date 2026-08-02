@@ -12,19 +12,16 @@
       position: sticky;
       top: 0;
       z-index: 100;
-      background: rgba(255, 255, 255, 0.85);
+      background: rgba(255, 255, 255, 0.92);
       backdrop-filter: saturate(180%) blur(20px);
       -webkit-backdrop-filter: saturate(180%) blur(20px);
-      border-bottom: 0.5px solid var(--line);
     }
 
     .dk-header-inner {
       display: flex;
       align-items: center;
       gap: 16px;
-      padding: 10px 20px;
-      max-width: 1200px;
-      margin: 0 auto;
+      padding: 12px 24px;
     }
 
     .dk-nav {
@@ -61,8 +58,6 @@
       display: flex;
       align-items: center;
       gap: 10px;
-      padding-right: 16px;
-      border-right: 1px solid var(--line);
     }
 
     .dk-logo-icon {
@@ -88,20 +83,40 @@
       letter-spacing: -0.3px;
     }
 
-    /* 搜索栏容器 */
+    /* 搜索栏容器 - 居中 */
     .dk-search-container {
       flex: 1;
       display: flex;
       justify-content: center;
+      max-width: 680px;
+      margin: 0 auto;
     }
 
     /* 内容区域 */
     .dk-content {
       max-width: 1200px;
       margin: 0 auto;
-      padding: 0 20px;
-      height: calc(100vh - 65px);
+      padding: 0 24px;
+      height: calc(100vh - 68px);
       overflow-y: auto;
+    }
+
+    /* 自定义滚动条 */
+    .dk-content::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .dk-content::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .dk-content::-webkit-scrollbar-thumb {
+      background: rgba(0, 0, 0, 0.12);
+      border-radius: 3px;
+    }
+
+    .dk-content::-webkit-scrollbar-thumb:hover {
+      background: rgba(0, 0, 0, 0.2);
     }
 
     /* 响应式 */
@@ -110,8 +125,12 @@
         display: none;
       }
 
-      .dk-logo {
-        padding-right: 12px;
+      .dk-header-inner {
+        padding: 10px 16px;
+      }
+
+      .dk-content {
+        padding: 0 16px;
       }
     }
   </style>
