@@ -8,6 +8,22 @@
   <link rel="icon" type="image/png" href="/static/icon_freetime.png">
   <link rel="stylesheet" href="/extractor-static/app.css?v=1.0.0">
   <style>
+    /* 重置原生浏览器样式 */
+    input, select, button, textarea {
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      appearance: none;
+      border-radius: 0;
+      background: transparent;
+      border: none;
+      outline: none;
+      font: inherit;
+    }
+
+    select {
+      cursor: pointer;
+    }
+
     /* DrillKnowledge 页面布局 - 无全局滚动 */
     html, body {
       height: 100%;
@@ -241,6 +257,95 @@
       color: var(--ink);
     }
 
+    /* 自定义下拉框 - 无原生组件 */
+    .custom-select-wrapper {
+      position: relative;
+    }
+
+    .custom-dropdown {
+      position: relative;
+    }
+
+    .custom-dropdown-trigger {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      padding: 0 8px;
+      height: 100%;
+    }
+
+    .custom-dropdown-trigger span {
+      font-size: 13px;
+      color: var(--ink-secondary);
+      white-space: nowrap;
+    }
+
+    .custom-dropdown-trigger svg {
+      width: 14px;
+      height: 14px;
+      color: var(--ink-tertiary);
+      transition: transform 0.2s ease;
+    }
+
+    .custom-dropdown.open .custom-dropdown-trigger svg {
+      transform: rotate(180deg);
+    }
+
+    .custom-dropdown-menu {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      min-width: 140px;
+      background: #ffffff;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+      padding: 4px;
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(-8px);
+      transition: all 0.2s ease;
+      z-index: 1000;
+    }
+
+    .custom-dropdown.open .custom-dropdown-menu {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+    }
+
+    .custom-dropdown-option {
+      padding: 8px 12px;
+      font-size: 13px;
+      color: var(--ink-secondary);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .custom-dropdown-option:hover {
+      background: var(--surface-muted);
+      color: var(--ink);
+    }
+
+    .custom-dropdown-option.active {
+      background: var(--surface-muted);
+      color: var(--ink);
+      font-weight: 500;
+    }
+
+    /* 输入框样式重置 */
+    .field input {
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      appearance: none;
+      border-radius: 0;
+      background: transparent;
+      border: none;
+      outline: none;
+    }
+
     /* 响应式 */
     @media (max-width: 768px) {
       .dk-logo-text {
@@ -294,14 +399,19 @@
                   <i data-lucide="circle-help" aria-hidden="true"></i>
                 </button>
               </div>
-              <div class="field select-field">
+              <div class="field select-field custom-select-wrapper">
                 <i class="ui-icon" data-lucide="scan-search" aria-hidden="true"></i>
-                <label class="sr-only" for="mode">提取模式</label>
-                <select id="mode" aria-label="提取模式">
-                  <option value="auto">智能提取</option>
-                  <option value="visual">全模态</option>
-                </select>
-                <i class="select-chevron" data-lucide="chevron-down" aria-hidden="true"></i>
+                <div class="custom-dropdown" id="modeDropdown">
+                  <div class="custom-dropdown-trigger" id="modeTrigger">
+                    <span id="modeValue">智能提取</span>
+                    <i data-lucide="chevron-down" aria-hidden="true"></i>
+                  </div>
+                  <div class="custom-dropdown-menu" id="modeMenu">
+                    <div class="custom-dropdown-option active" data-value="auto">智能提取</div>
+                    <div class="custom-dropdown-option" data-value="visual">全模态</div>
+                  </div>
+                </div>
+                <input type="hidden" id="mode" value="auto">
               </div>
               <button class="primary-button tooltip" id="submit" type="submit"
                 aria-label="开始提取" data-tooltip="开始提取">
@@ -518,5 +628,34 @@
 
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
   <script src="/extractor-static/app.js?v=1.0.0"></script>
+  <script>
+    // 自定义下拉框 - 模式选择
+    const modeDropdown = document.getElementById('modeDropdown');
+    const modeTrigger = document.getElementById('modeTrigger');
+    const modeMenu = document.getElementById('modeMenu');
+    const modeInput = document.getElementById('mode');
+    const modeValue = document.getElementById('modeValue');
+
+    modeTrigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      modeDropdown.classList.toggle('open');
+    });
+
+    modeMenu.querySelectorAll('.custom-dropdown-option').forEach(option => {
+      option.addEventListener('click', () => {
+        modeInput.value = option.dataset.value;
+        modeValue.textContent = option.textContent;
+        modeMenu.querySelectorAll('.custom-dropdown-option').forEach(opt => {
+          opt.classList.toggle('active', opt === option);
+        });
+        modeDropdown.classList.remove('open');
+      });
+    });
+
+    // 点击外部关闭下拉框
+    document.addEventListener('click', () => {
+      modeDropdown.classList.remove('open');
+    });
+  </script>
 </body>
 </html>
