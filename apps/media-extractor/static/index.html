@@ -170,6 +170,58 @@
       scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
     }
 
+    /* 结果网格布局 - 左侧固定，右侧滚动 */
+    .result-grid {
+      display: flex;
+      height: 100%;
+    }
+
+    .result-grid .media {
+      width: 280px;
+      flex-shrink: 0;
+      overflow-y: auto;
+      border-right: 1px solid var(--line);
+    }
+
+    .result-grid .analysis {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .result-grid .analysis .result-navigation {
+      flex-shrink: 0;
+    }
+
+    .result-grid .analysis .result-view {
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    /* 内容区域内部滚动条 */
+    .result-view::-webkit-scrollbar,
+    .cleaned-article::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    .result-view::-webkit-scrollbar-track,
+    .cleaned-article::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .result-view::-webkit-scrollbar-thumb,
+    .cleaned-article::-webkit-scrollbar-thumb {
+      background: rgba(0, 0, 0, 0.1);
+      border-radius: 2px;
+    }
+
+    .result-view,
+    .cleaned-article {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
+    }
+
     /* 响应式 */
     @media (max-width: 768px) {
       .dk-logo-text {
