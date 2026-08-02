@@ -451,11 +451,10 @@ body {
 }
 
 .settings-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  letter-spacing: 1.5px;
-  font-family: 'SF Mono', 'Consolas', monospace;
+  font-size: 24px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.5px;
 }
 
 .settings-close {
@@ -505,16 +504,19 @@ body {
   background: rgba(255, 255, 255, 0.08);
 }
 
-.provider-logo {
-  width: 24px;
-  height: 24px;
-  object-fit: contain;
-  border-radius: 4px;
+.provider-icon-box {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  flex-shrink: 0;
 }
 
 .provider-name {
   flex: 1;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 500;
   color: #fff;
 }
@@ -615,19 +617,16 @@ body {
 
 .form-field label {
   display: block;
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 500;
   color: var(--text-secondary);
-  margin-bottom: 8px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  font-family: 'SF Mono', 'Consolas', monospace;
+  margin-bottom: 10px;
 }
 
 .settings-input {
   width: 100%;
-  padding: 14px 18px;
-  font-size: 14px;
+  padding: 16px 20px;
+  font-size: 16px;
   background: rgba(255, 255, 255, 0.06);
   border: none;
   border-radius: 14px;
