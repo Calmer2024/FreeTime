@@ -20,15 +20,18 @@
     .dk-header-inner {
       display: flex;
       align-items: center;
-      gap: 16px;
       padding: 12px 24px;
+      position: relative;
     }
 
+    /* 导航区域 - 固定在左侧 */
     .dk-nav {
       display: flex;
       align-items: center;
       gap: 12px;
       flex-shrink: 0;
+      position: absolute;
+      left: 24px;
     }
 
     .dk-back {
@@ -83,13 +86,11 @@
       letter-spacing: -0.3px;
     }
 
-    /* 搜索栏容器 - 居中 */
+    /* 搜索栏容器 - 页面居中 */
     .dk-search-container {
       flex: 1;
       display: flex;
       justify-content: center;
-      max-width: 680px;
-      margin: 0 auto;
     }
 
     /* 内容区域 */
@@ -103,7 +104,7 @@
 
     /* 自定义滚动条 */
     .dk-content::-webkit-scrollbar {
-      width: 6px;
+      width: 5px;
     }
 
     .dk-content::-webkit-scrollbar-track {
@@ -111,18 +112,22 @@
     }
 
     .dk-content::-webkit-scrollbar-thumb {
-      background: rgba(0, 0, 0, 0.12);
+      background: rgba(0, 0, 0, 0.1);
       border-radius: 3px;
     }
 
     .dk-content::-webkit-scrollbar-thumb:hover {
-      background: rgba(0, 0, 0, 0.2);
+      background: rgba(0, 0, 0, 0.18);
     }
 
     /* 响应式 */
     @media (max-width: 768px) {
       .dk-logo-text {
         display: none;
+      }
+
+      .dk-nav {
+        left: 16px;
       }
 
       .dk-header-inner {
