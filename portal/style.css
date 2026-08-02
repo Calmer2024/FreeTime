@@ -451,10 +451,10 @@ body {
 }
 
 .settings-label {
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 700;
   color: #fff;
-  letter-spacing: -0.5px;
+  letter-spacing: -0.3px;
 }
 
 .settings-close {
