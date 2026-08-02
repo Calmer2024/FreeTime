@@ -93,18 +93,22 @@
       justify-content: center;
     }
 
-    /* 内容区域 */
+    /* 内容区域 - 全宽，滚动条在浏览器右侧 */
     .dk-content {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 24px 24px;
+      width: 100%;
       height: calc(100vh - 68px);
       overflow-y: auto;
     }
 
-    /* 自定义滚动条 */
+    .dk-content-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px 24px;
+    }
+
+    /* 自定义滚动条 - 浏览器最右侧 */
     .dk-content::-webkit-scrollbar {
-      width: 5px;
+      width: 6px;
     }
 
     .dk-content::-webkit-scrollbar-track {
@@ -112,12 +116,18 @@
     }
 
     .dk-content::-webkit-scrollbar-thumb {
-      background: rgba(0, 0, 0, 0.1);
+      background: rgba(0, 0, 0, 0.08);
       border-radius: 3px;
     }
 
     .dk-content::-webkit-scrollbar-thumb:hover {
-      background: rgba(0, 0, 0, 0.18);
+      background: rgba(0, 0, 0, 0.15);
+    }
+
+    /* Firefox 滚动条 */
+    .dk-content {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(0, 0, 0, 0.08) transparent;
     }
 
     /* 响应式 */
@@ -134,7 +144,7 @@
         padding: 10px 16px;
       }
 
-      .dk-content {
+      .dk-content-inner {
         padding: 20px 16px;
       }
     }
@@ -199,6 +209,7 @@
 
     <!-- 主内容区域 -->
     <main class="dk-content" id="content-scroll">
+      <div class="dk-content-inner">
       <!-- 加载状态 -->
       <section class="panel workbench" id="workbench" aria-live="polite" hidden>
         <div class="loading" id="loading">
@@ -395,6 +406,7 @@
           <div class="history-empty">正在读取记录</div>
         </div>
       </section>
+      </div>
     </main>
   </div>
 
