@@ -197,6 +197,25 @@
       flex-shrink: 0;
       overflow-y: auto;
       border-right: 1px solid var(--line);
+      scrollbar-width: thin;
+      scrollbar-color: rgba(0, 0, 0, 0.06) transparent;
+    }
+
+    .result-grid .media::-webkit-scrollbar {
+      width: 3px;
+    }
+
+    .result-grid .media::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .result-grid .media::-webkit-scrollbar-thumb {
+      background: rgba(0, 0, 0, 0.06);
+      border-radius: 2px;
+    }
+
+    .result-grid .media::-webkit-scrollbar-thumb:hover {
+      background: rgba(0, 0, 0, 0.12);
     }
 
     .result-grid .analysis {
@@ -217,32 +236,37 @@
       padding-right: 0;
     }
 
-    /* 内容区域内部滚动条 - 卡片最右侧 */
+    /* 内容区域内部滚动条 - 极简样式 */
     .result-view::-webkit-scrollbar,
-    .cleaned-article::-webkit-scrollbar {
-      width: 5px;
+    .cleaned-article::-webkit-scrollbar,
+    .dk-content-inner::-webkit-scrollbar {
+      width: 4px;
     }
 
     .result-view::-webkit-scrollbar-track,
-    .cleaned-article::-webkit-scrollbar-track {
+    .cleaned-article::-webkit-scrollbar-track,
+    .dk-content-inner::-webkit-scrollbar-track {
       background: transparent;
     }
 
     .result-view::-webkit-scrollbar-thumb,
-    .cleaned-article::-webkit-scrollbar-thumb {
-      background: rgba(0, 0, 0, 0.12);
-      border-radius: 3px;
+    .cleaned-article::-webkit-scrollbar-thumb,
+    .dk-content-inner::-webkit-scrollbar-thumb {
+      background: rgba(0, 0, 0, 0.08);
+      border-radius: 2px;
     }
 
     .result-view::-webkit-scrollbar-thumb:hover,
-    .cleaned-article::-webkit-scrollbar-thumb:hover {
-      background: rgba(0, 0, 0, 0.2);
+    .cleaned-article::-webkit-scrollbar-thumb:hover,
+    .dk-content-inner::-webkit-scrollbar-thumb:hover {
+      background: rgba(0, 0, 0, 0.15);
     }
 
     .result-view,
-    .cleaned-article {
+    .cleaned-article,
+    .dk-content-inner {
       scrollbar-width: thin;
-      scrollbar-color: rgba(0, 0, 0, 0.12) transparent;
+      scrollbar-color: rgba(0, 0, 0, 0.08) transparent;
     }
 
     /* 正文内容固定高度 */
