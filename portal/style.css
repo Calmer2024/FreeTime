@@ -164,20 +164,19 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 16px;
+  gap: 14px;
   margin-bottom: 16px;
 }
 
 .logo-icon {
-  width: 72px;
-  height: 72px;
-  border-radius: 18px;
+  width: 48px;
+  height: 48px;
   object-fit: contain;
 }
 
 .logo-text {
   font-family: 'Bitcount Prop Single', cursive;
-  font-size: 56px;
+  font-size: 48px;
   font-weight: 700;
   background: linear-gradient(135deg, #fff, #a5b4fc);
   -webkit-background-clip: text;
@@ -187,7 +186,7 @@ body {
 }
 
 .tagline {
-  font-size: 20px;
+  font-size: 18px;
   color: var(--text-secondary);
   font-weight: 400;
 }
