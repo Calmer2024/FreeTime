@@ -48,11 +48,13 @@ app = FastAPI(
 BASE_DIR = Path(__file__).parent.parent.parent.parent  # FreeTime 根目录
 PORTAL_DIR = BASE_DIR / "portal"
 STATIC_DIR = Path(__file__).parent.parent / "static"
+ROOT_STATIC_DIR = BASE_DIR / "static"
 CHAOXING_DIR = BASE_DIR / "apps" / "chaoxing-auto"
 
 # 挂载静态文件
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+app.mount("/static", StaticFiles(directory=ROOT_STATIC_DIR), name="root-static")
 app.mount("/portal", StaticFiles(directory=PORTAL_DIR), name="portal")
+app.mount("/extractor-static", StaticFiles(directory=STATIC_DIR), name="extractor-static")
 
 # 超星 API 路由
 chaoxing_router = APIRouter(prefix="/chaoxing/api", tags=["chaoxing"])
