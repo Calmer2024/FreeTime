@@ -196,11 +196,39 @@ def _ensure_cleaned_article(payload: dict[str, object]) -> dict[str, object]:
 
 # ========== 页面路由 ==========
 
+SETTINGS_FILE = BASE_DIR / "settings.json"
+
+
+def load_settings() -> dict:
+    """加载全局设置"""
+    if SETTINGS_FILE.exists():
+        return json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+    return {}
+
+
+def save_settings(settings: dict) -> None:
+    """保存全局设置"""
+    SETTINGS_FILE.write_text(json.dumps(settings, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 @app.get("/", include_in_schema=False)
 async def portal() -> HTMLResponse:
     """FreeTime 主门户入口"""
     content = (PORTAL_DIR / "index.html").read_text(encoding="utf-8")
     return HTMLResponse(content=content)
+
+
+@app.get("/api/settings")
+async def get_settings():
+    """获取全局设置"""
+    return load_settings()
+
+
+@app.post("/api/settings")
+async def update_settings(data: dict):
+    """更新全局设置"""
+    save_settings(data)
+    return {"status": "ok"}
 
 
 @app.get("/extractor", include_in_schema=False)

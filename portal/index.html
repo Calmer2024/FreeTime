@@ -24,12 +24,105 @@
       <div class="gradient-orb orb-4"></div>
     </div>
 
+    <!-- 设置按钮 -->
+    <button class="settings-btn" id="settingsBtn" aria-label="API 设置">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/>
+        <line x1="2" y1="12" x2="22" y2="12"/>
+        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+      </svg>
+    </button>
+
+    <!-- 设置弹窗 -->
+    <div class="settings-modal" id="settingsModal">
+      <div class="settings-overlay" id="settingsOverlay"></div>
+      <div class="settings-content">
+        <div class="settings-header">
+          <h2>API 配置</h2>
+          <button class="settings-close" id="settingsClose">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+        <div class="settings-body">
+          <p class="settings-desc">配置 LLM 服务的 API Key，将对所有应用生效。</p>
+
+          <!-- Deepseek 配置 -->
+          <div class="provider-section">
+            <div class="provider-header">
+              <div class="provider-icon" style="background: linear-gradient(135deg, #0ea5e9, #0284c7);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                </svg>
+              </div>
+              <div>
+                <h3>Deepseek</h3>
+                <span class="provider-models">deepseek-v4-pro / deepseek-v4-flash</span>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>API Key</label>
+              <input type="password" id="deepseekKey" placeholder="sk-..." class="settings-input">
+            </div>
+            <div class="form-group">
+              <label>默认模型</label>
+              <select id="deepseekModel" class="settings-select">
+                <option value="deepseek-v4-pro">deepseek-v4-pro</option>
+                <option value="deepseek-v4-flash">deepseek-v4-flash</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Mimo 配置 -->
+          <div class="provider-section">
+            <div class="provider-header">
+              <div class="provider-icon" style="background: linear-gradient(135deg, #f43f5e, #e11d48);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                </svg>
+              </div>
+              <div>
+                <h3>Mimo</h3>
+                <span class="provider-models">mimo-2.5-pro / mimo-2.5</span>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>API Key</label>
+              <input type="password" id="mimoKey" placeholder="输入 Mimo API Key" class="settings-input">
+            </div>
+            <div class="form-group">
+              <label>默认模型</label>
+              <select id="mimoModel" class="settings-select">
+                <option value="mimo-2.5-pro">mimo-2.5-pro</option>
+                <option value="mimo-2.5">mimo-2.5</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- 当前生效配置 -->
+          <div class="active-config">
+            <h4>当前生效配置</h4>
+            <div class="config-status" id="configStatus">
+              <span class="status-dot"></span>
+              <span>未配置</span>
+            </div>
+          </div>
+        </div>
+        <div class="settings-footer">
+          <button class="settings-btn-secondary" id="settingsCancel">取消</button>
+          <button class="settings-btn-primary" id="settingsSave">保存配置</button>
+        </div>
+      </div>
+    </div>
+
     <!-- 主内容 -->
     <main class="main-content">
       <!-- 头部 -->
       <header class="header">
         <div class="logo">
-          <img src="/static/icon_freetime.png" alt="FreeTime" class="logo-icon" width="64" height="64">
+          <img src="/static/icon_freetime.png" alt="FreeTime" class="logo-icon" width="48" height="48">
           <h1 class="logo-text">FreeTime</h1>
         </div>
         <p class="tagline">帮助你节省时间的应用工具箱</p>
@@ -156,6 +249,108 @@
 
     // 页面加载时创建粒子
     document.addEventListener('DOMContentLoaded', createParticles);
+
+    // ========== 设置功能 ==========
+    const settingsBtn = document.getElementById('settingsBtn');
+    const settingsModal = document.getElementById('settingsModal');
+    const settingsOverlay = document.getElementById('settingsOverlay');
+    const settingsClose = document.getElementById('settingsClose');
+    const settingsCancel = document.getElementById('settingsCancel');
+    const settingsSave = document.getElementById('settingsSave');
+    const configStatus = document.getElementById('configStatus');
+
+    // 打开设置
+    settingsBtn.addEventListener('click', () => {
+      loadSettings();
+      settingsModal.classList.add('active');
+    });
+
+    // 关闭设置
+    function closeSettings() {
+      settingsModal.classList.remove('active');
+    }
+    settingsOverlay.addEventListener('click', closeSettings);
+    settingsClose.addEventListener('click', closeSettings);
+    settingsCancel.addEventListener('click', closeSettings);
+
+    // 加载配置
+    function loadSettings() {
+      const config = getApiConfig();
+      document.getElementById('deepseekKey').value = config.deepseek?.apiKey || '';
+      document.getElementById('deepseekModel').value = config.deepseek?.model || 'deepseek-v4-pro';
+      document.getElementById('mimoKey').value = config.mimo?.apiKey || '';
+      document.getElementById('mimoModel').value = config.mimo?.model || 'mimo-2.5-pro';
+      updateConfigStatus();
+    }
+
+    // 保存配置
+    settingsSave.addEventListener('click', async () => {
+      const config = {
+        deepseek: {
+          apiKey: document.getElementById('deepseekKey').value.trim(),
+          model: document.getElementById('deepseekModel').value
+        },
+        mimo: {
+          apiKey: document.getElementById('mimoKey').value.trim(),
+          model: document.getElementById('mimoModel').value
+        }
+      };
+
+      try {
+        const response = await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(config)
+        });
+
+        if (response.ok) {
+          localStorage.setItem('freetime_api_config', JSON.stringify(config));
+          updateConfigStatus();
+          closeSettings();
+          alert('配置已保存');
+        } else {
+          alert('保存失败，请重试');
+        }
+      } catch (error) {
+        // 离线时保存到本地
+        localStorage.setItem('freetime_api_config', JSON.stringify(config));
+        updateConfigStatus();
+        closeSettings();
+        alert('配置已保存到本地');
+      }
+    });
+
+    // 获取配置
+    function getApiConfig() {
+      const saved = localStorage.getItem('freetime_api_config');
+      return saved ? JSON.parse(saved) : {};
+    }
+
+    // 更新配置状态显示
+    function updateConfigStatus() {
+      const config = getApiConfig();
+      const hasConfig = config.deepseek?.apiKey || config.mimo?.apiKey;
+      if (hasConfig) {
+        configStatus.className = 'config-status active';
+        const providers = [];
+        if (config.deepseek?.apiKey) providers.push('Deepseek');
+        if (config.mimo?.apiKey) providers.push('Mimo');
+        configStatus.innerHTML = `<span class="status-dot"></span><span>已配置: ${providers.join(', ')}</span>`;
+      } else {
+        configStatus.className = 'config-status';
+        configStatus.innerHTML = '<span class="status-dot"></span><span>未配置</span>';
+      }
+    }
+
+    // 页面加载时检查配置
+    document.addEventListener('DOMContentLoaded', updateConfigStatus);
+
+    // ESC 键关闭弹窗
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && settingsModal.classList.contains('active')) {
+        closeSettings();
+      }
+    });
   </script>
 </body>
 </html>
