@@ -285,11 +285,8 @@ async def chaoxing_index() -> HTMLResponse:
     }}
     .cx-logo-icon {{
       width: 32px; height: 32px;
-      display: flex; align-items: center; justify-content: center;
-      background: var(--action);
-      border-radius: var(--radius-sm);
+      object-fit: contain;
     }}
-    .cx-logo-icon svg {{ width: 18px; height: 18px; color: white; }}
     .cx-title {{ font-size: 16px; font-weight: 600; color: var(--ink); }}
 
     /* 内容 */
@@ -416,7 +413,7 @@ async def chaoxing_index() -> HTMLResponse:
       <span>FreeTime</span>
     </a>
     <div class="cx-logo">
-      <img src="/static/icon_chaoxing.png" alt="超星刷课助手" class="cx-logo-icon" width="32" height="32" style="border-radius: 8px;">
+      <img src="/static/icon_chaoxing.png" alt="超星刷课助手" class="cx-logo-icon" width="32" height="32">
       <span class="cx-title">超星刷课助手</span>
     </div>
   </header>
