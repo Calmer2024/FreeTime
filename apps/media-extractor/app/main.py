@@ -226,57 +226,227 @@ async def chaoxing_index() -> HTMLResponse:
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>超星刷课助手 - FreeTime</title>
-  <link rel="stylesheet" href="/static/common.css">
   <style>
-    .ft-status-row {{ display: flex; gap: 12px; margin-top: 16px; }}
-    .ft-status-row .ft-btn {{ flex: 1; }}
+    :root {{
+      color-scheme: light;
+      --shell: #ffffff;
+      --surface: #ffffff;
+      --surface-muted: #f6f6f7;
+      --ink: #1d1d1f;
+      --ink-secondary: #5f5f63;
+      --ink-tertiary: #8e8e93;
+      --line: rgba(29, 29, 31, .09);
+      --action: #1d1d1f;
+      --action-hover: #000000;
+      --danger: #9a5a53;
+      --danger-soft: #f3e8e6;
+      --radius-sm: 9px;
+      --radius-md: 12px;
+      --radius-lg: 18px;
+      --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei UI", sans-serif;
+    }}
+    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    html, body {{ width: 100%; height: 100%; overflow: hidden; }}
+    body {{ font-family: var(--font-sans); background: var(--shell); color: var(--ink); }}
+
+    /* 头部 */
+    .cx-header {{
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 10px 20px;
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: saturate(180%) blur(20px);
+      border-bottom: 0.5px solid var(--line);
+    }}
+    .cx-back {{
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 12px;
+      color: var(--ink-secondary);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      border-radius: var(--radius-sm);
+      transition: background 0.2s;
+    }}
+    .cx-back:hover {{ color: var(--ink); background: var(--surface-muted); }}
+    .cx-back svg {{ width: 18px; height: 18px; }}
+    .cx-logo {{
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding-right: 16px;
+      border-right: 1px solid var(--line);
+    }}
+    .cx-logo-icon {{
+      width: 32px; height: 32px;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--action);
+      border-radius: var(--radius-sm);
+    }}
+    .cx-logo-icon svg {{ width: 18px; height: 18px; color: white; }}
+    .cx-title {{ font-size: 16px; font-weight: 600; color: var(--ink); }}
+
+    /* 内容 */
+    .cx-content {{
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 20px;
+      height: calc(100vh - 53px);
+      overflow-y: auto;
+    }}
+
+    /* 卡片 */
+    .cx-card {{
+      background: var(--surface);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 1px 3px rgba(0,0,0,.04), 0 4px 12px rgba(0,0,0,.04);
+      margin-bottom: 16px;
+      overflow: hidden;
+    }}
+    .cx-card-header {{
+      padding: 16px 20px;
+      border-bottom: 0.5px solid var(--line);
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--ink);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }}
+    .cx-card-body {{ padding: 20px; }}
+
+    /* 状态 */
+    .cx-status {{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      background: var(--surface-muted);
+      border-radius: var(--radius-sm);
+      margin-bottom: 16px;
+    }}
+    .cx-status-dot {{
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--ink-tertiary);
+    }}
+    .cx-status-dot.active {{
+      background: #34c759;
+      animation: pulse 2s infinite;
+    }}
+    @keyframes pulse {{ 0%,100% {{ opacity:1; }} 50% {{ opacity:.5; }} }}
+    .cx-status-text {{ font-size: 14px; color: var(--ink-secondary); }}
+
+    /* 按钮 */
+    .cx-btn-group {{ display: flex; gap: 12px; }}
+    .cx-btn {{
+      flex: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 16px;
+      border: none;
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.16s;
+    }}
+    .cx-btn svg {{ width: 16px; height: 16px; }}
+    .cx-btn-primary {{ background: var(--action); color: white; }}
+    .cx-btn-primary:hover {{ background: var(--action-hover); }}
+    .cx-btn-danger {{ background: var(--danger); color: white; }}
+    .cx-btn-danger:hover {{ background: #8a4a43; }}
+    .cx-btn:disabled {{ opacity: .45; cursor: not-allowed; }}
+
+    /* 表单 */
+    .cx-form-group {{ margin-bottom: 16px; }}
+    .cx-form-group:last-child {{ margin-bottom: 0; }}
+    .cx-label {{ display: block; font-size: 13px; color: var(--ink-secondary); margin-bottom: 6px; }}
+    .cx-input {{
+      width: 100%;
+      padding: 10px 14px;
+      font-size: 14px;
+      background: var(--surface-muted);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      color: var(--ink);
+    }}
+    .cx-input:focus {{ outline: none; border-color: var(--action); }}
+    .cx-select {{
+      width: 100%;
+      padding: 10px 14px;
+      font-size: 14px;
+      background: var(--surface-muted);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      color: var(--ink);
+      cursor: pointer;
+    }}
+    .cx-form-row {{ display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }}
+
+    /* 日志 */
+    .cx-log {{
+      background: #1d1d1f;
+      color: #e5e5ea;
+      border-radius: var(--radius-md);
+      padding: 16px;
+      max-height: 400px;
+      overflow-y: auto;
+      font-family: "SF Mono", Menlo, monospace;
+      font-size: 12px;
+      line-height: 1.6;
+    }}
+    .cx-log-line {{ padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,.06); }}
   </style>
 </head>
 <body>
-  <header class="ft-header">
-    <a href="/" class="ft-back">
+  <header class="cx-header">
+    <a href="/" class="cx-back">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M19 12H5M12 19l-7-7 7-7"/>
       </svg>
       <span>FreeTime</span>
     </a>
-    <div class="ft-app-icon" style="background: linear-gradient(135deg, #10b981, #059669);">
-      <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
-        <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
-      </svg>
-    </div>
-    <div class="ft-app-title">
-      <h1>超星刷课助手</h1>
+    <div class="cx-logo">
+      <div class="cx-logo-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+          <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+        </svg>
+      </div>
+      <span class="cx-title">超星刷课助手</span>
     </div>
   </header>
 
-  <div class="ft-container">
+  <div class="cx-content">
     <!-- 运行状态 -->
-    <div class="ft-card" style="margin-bottom: 20px;">
-      <div class="ft-card-header">
-        <h2>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"/>
-            <polyline points="12 6 12 12 16 14"/>
-          </svg>
-          运行状态
-        </h2>
+    <div class="cx-card">
+      <div class="cx-card-header">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <polyline points="12 6 12 12 16 14"/>
+        </svg>
+        运行状态
       </div>
-      <div class="ft-card-body">
-        <div class="ft-status">
-          <div class="ft-status-dot" id="status-dot"></div>
-          <span class="ft-status-text" id="status-text">未运行</span>
+      <div class="cx-card-body">
+        <div class="cx-status">
+          <div class="cx-status-dot" id="status-dot"></div>
+          <span class="cx-status-text" id="status-text">未运行</span>
         </div>
-        <div class="ft-status-row">
-          <button class="ft-btn ft-btn-success" id="start-btn" onclick="startTask()">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <div class="cx-btn-group">
+          <button class="cx-btn cx-btn-primary" id="start-btn" onclick="startTask()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polygon points="5 3 19 12 5 21 5 3"/>
             </svg>
             启动刷课
           </button>
-          <button class="ft-btn ft-btn-danger" id="stop-btn" onclick="stopTask()" disabled>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <button class="cx-btn cx-btn-danger" id="stop-btn" onclick="stopTask()" disabled>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="6" y="4" width="4" height="16"/>
               <rect x="14" y="4" width="4" height="16"/>
             </svg>
@@ -287,34 +457,32 @@ async def chaoxing_index() -> HTMLResponse:
     </div>
 
     <!-- 课程配置 -->
-    <div class="ft-card" style="margin-bottom: 20px;">
-      <div class="ft-card-header">
-        <h2>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="3"/>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-          </svg>
-          课程配置
-        </h2>
+    <div class="cx-card">
+      <div class="cx-card-header">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+        课程配置
       </div>
-      <div class="ft-card-body">
-        <div class="ft-form-group">
-          <label class="ft-form-label">课程链接或名称</label>
-          <input type="text" class="ft-input" id="course-input" placeholder="粘贴课程链接或输入课程名称" value="{course_value}">
+      <div class="cx-card-body">
+        <div class="cx-form-group">
+          <label class="cx-label">课程链接或名称</label>
+          <input type="text" class="cx-input" id="course-input" placeholder="粘贴课程链接或输入课程名称" value="{course_value}">
         </div>
-        <div class="ft-form-row">
-          <div class="ft-form-group">
-            <label class="ft-form-label">播放倍速</label>
-            <select class="ft-select" id="speed-select">{speed_options}</select>
+        <div class="cx-form-row">
+          <div class="cx-form-group">
+            <label class="cx-label">播放倍速</label>
+            <select class="cx-select" id="speed-select">{speed_options}</select>
           </div>
-          <div class="ft-form-group">
-            <label class="ft-form-label">轮询间隔 (秒)</label>
-            <input type="number" class="ft-input" id="interval-input" min="1" max="30" value="{interval_value}">
+          <div class="cx-form-group">
+            <label class="cx-label">轮询间隔 (秒)</label>
+            <input type="number" class="cx-input" id="interval-input" min="1" max="30" value="{interval_value}">
           </div>
         </div>
-        <div class="ft-button-group">
-          <button class="ft-btn ft-btn-primary" onclick="saveConfig()">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <div class="cx-btn-group" style="margin-top: 16px;">
+          <button class="cx-btn cx-btn-primary" onclick="saveConfig()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
               <polyline points="17 21 17 13 7 13 7 21"/>
               <polyline points="7 3 7 8 15 8"/>
@@ -326,22 +494,19 @@ async def chaoxing_index() -> HTMLResponse:
     </div>
 
     <!-- 运行日志 -->
-    <div class="ft-card">
-      <div class="ft-card-header">
-        <h2>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
-            <line x1="16" y1="13" x2="8" y2="13"/>
-            <line x1="16" y1="17" x2="8" y2="17"/>
-            <polyline points="10 9 9 9 8 9"/>
-          </svg>
-          运行日志
-        </h2>
+    <div class="cx-card">
+      <div class="cx-card-header">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="16" y1="13" x2="8" y2="13"/>
+          <line x1="16" y1="17" x2="8" y2="17"/>
+        </svg>
+        运行日志
       </div>
-      <div class="ft-card-body" style="padding: 0;">
-        <div class="ft-log" id="log-container">
-          <div class="ft-log-line">等待启动...</div>
+      <div class="cx-card-body" style="padding: 0;">
+        <div class="cx-log" id="log-container">
+          <div class="cx-log-line">等待启动...</div>
         </div>
       </div>
     </div>
@@ -389,7 +554,7 @@ async def chaoxing_index() -> HTMLResponse:
 
     function updateStatus(r) {{
       isRunning = r;
-      document.getElementById('status-dot').className = 'ft-status-dot' + (r ? ' active' : '');
+      document.getElementById('status-dot').className = 'cx-status-dot' + (r ? ' active' : '');
       document.getElementById('status-text').textContent = r ? '运行中...' : '未运行';
       document.getElementById('start-btn').disabled = r;
       document.getElementById('stop-btn').disabled = !r;
@@ -410,7 +575,7 @@ async def chaoxing_index() -> HTMLResponse:
         .then(d => {{
           updateStatus(d.is_running);
           document.getElementById('log-container').innerHTML =
-            d.log_lines.map(l => '<div class="ft-log-line">' + l + '</div>').join('');
+            d.log_lines.map(l => '<div class="cx-log-line">' + l + '</div>').join('');
         }});
     }}
 
