@@ -1,0 +1,356 @@
+/* FreeTime 统一设计系统 */
+:root {
+  /* 颜色系统 */
+  --ft-primary: #007AFF;
+  --ft-primary-hover: #0056CC;
+  --ft-success: #34C759;
+  --ft-danger: #FF3B30;
+  --ft-warning: #FF9500;
+
+  /* 背景 */
+  --ft-bg: #F2F2F7;
+  --ft-bg-elevated: #FFFFFF;
+  --ft-bg-secondary: #F9F9F9;
+
+  /* 文字 */
+  --ft-text: #1C1C1E;
+  --ft-text-secondary: #8E8E93;
+  --ft-text-tertiary: #AEAEB2;
+
+  /* 边框 */
+  --ft-border: rgba(0, 0, 0, 0.08);
+  --ft-border-strong: rgba(0, 0, 0, 0.15);
+
+  /* 圆角 */
+  --ft-radius-sm: 8px;
+  --ft-radius-md: 12px;
+  --ft-radius-lg: 16px;
+  --ft-radius-xl: 20px;
+
+  /* 阴影 */
+  --ft-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --ft-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --ft-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+
+  /* 字体 */
+  --ft-font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --ft-font-mono: "SF Mono", "Menlo", "Monaco", monospace;
+}
+
+/* 重置 */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  font-family: var(--ft-font);
+  background: var(--ft-bg);
+  color: var(--ft-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ========== FreeTime 统一头部 ========== */
+.ft-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 20px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 0.5px solid var(--ft-border);
+}
+
+.ft-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  margin: -8px 0;
+  color: var(--ft-primary);
+  text-decoration: none;
+  font-size: 15px;
+  font-weight: 500;
+  border-radius: var(--ft-radius-sm);
+  transition: background 0.2s ease;
+}
+
+.ft-back:hover {
+  background: rgba(0, 122, 255, 0.08);
+}
+
+.ft-back svg {
+  width: 18px;
+  height: 18px;
+}
+
+.ft-app-icon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--ft-radius-sm);
+}
+
+.ft-app-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.ft-app-title {
+  flex: 1;
+}
+
+.ft-app-title h1 {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+/* ========== 统一卡片 ========== */
+.ft-card {
+  background: var(--ft-bg-elevated);
+  border-radius: var(--ft-radius-lg);
+  box-shadow: var(--ft-shadow-sm);
+  overflow: hidden;
+}
+
+.ft-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 0.5px solid var(--ft-border);
+}
+
+.ft-card-header h2 {
+  font-size: 15px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ft-card-body {
+  padding: 20px;
+}
+
+/* ========== 统一按钮 ========== */
+.ft-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  font-size: 15px;
+  font-weight: 500;
+  border: none;
+  border-radius: var(--ft-radius-sm);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.ft-btn-primary {
+  background: var(--ft-primary);
+  color: white;
+}
+
+.ft-btn-primary:hover {
+  background: var(--ft-primary-hover);
+}
+
+.ft-btn-success {
+  background: var(--ft-success);
+  color: white;
+}
+
+.ft-btn-danger {
+  background: var(--ft-danger);
+  color: white;
+}
+
+.ft-btn-ghost {
+  background: transparent;
+  color: var(--ft-primary);
+}
+
+.ft-btn-ghost:hover {
+  background: rgba(0, 122, 255, 0.08);
+}
+
+.ft-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ft-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* ========== 统一表单 ========== */
+.ft-form-group {
+  margin-bottom: 16px;
+}
+
+.ft-form-group:last-child {
+  margin-bottom: 0;
+}
+
+.ft-form-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ft-text-secondary);
+  margin-bottom: 8px;
+}
+
+.ft-input {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 15px;
+  background: var(--ft-bg);
+  border: 1px solid var(--ft-border);
+  border-radius: var(--ft-radius-sm);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.ft-input:focus {
+  outline: none;
+  border-color: var(--ft-primary);
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.12);
+}
+
+.ft-input::placeholder {
+  color: var(--ft-text-tertiary);
+}
+
+.ft-select {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 15px;
+  background: var(--ft-bg);
+  border: 1px solid var(--ft-border);
+  border-radius: var(--ft-radius-sm);
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%238E8E93' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  cursor: pointer;
+}
+
+.ft-select:focus {
+  outline: none;
+  border-color: var(--ft-primary);
+}
+
+/* ========== 统一状态 ========== */
+.ft-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--ft-bg);
+  border-radius: var(--ft-radius-sm);
+}
+
+.ft-status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ft-text-tertiary);
+  flex-shrink: 0;
+}
+
+.ft-status-dot.active {
+  background: var(--ft-success);
+  animation: ft-pulse 2s infinite;
+}
+
+@keyframes ft-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.ft-status-text {
+  font-size: 14px;
+  color: var(--ft-text-secondary);
+}
+
+/* ========== 统一日志 ========== */
+.ft-log {
+  background: #1C1C1E;
+  color: #E5E5EA;
+  border-radius: var(--ft-radius-md);
+  padding: 16px;
+  max-height: 400px;
+  overflow-y: auto;
+  font-family: var(--ft-font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.ft-log-line {
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.ft-log-line:last-child {
+  border-bottom: none;
+}
+
+/* ========== 统一容器 ========== */
+.ft-container {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 20px;
+  height: calc(100vh - 57px);
+  overflow-y: auto;
+}
+
+/* ========== 统一分组 ========== */
+.ft-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.ft-button-group {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+/* ========== 滚动条 ========== */
+.ft-container::-webkit-scrollbar,
+.ft-log::-webkit-scrollbar {
+  width: 6px;
+}
+
+.ft-container::-webkit-scrollbar-track,
+.ft-log::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ft-container::-webkit-scrollbar-thumb,
+.ft-log::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 3px;
+}
+
+.ft-log::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* ========== 响应式 ========== */
+@media (max-width: 640px) {
+  .ft-form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .ft-container {
+    padding: 16px;
+  }
+}

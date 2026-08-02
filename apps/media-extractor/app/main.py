@@ -226,101 +226,194 @@ async def chaoxing_index() -> HTMLResponse:
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>超星刷课助手 - FreeTime</title>
+  <link rel="stylesheet" href="/static/common.css">
   <style>
-    * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8fafc; color: #1e293b; min-height: 100vh; }}
-    .app-header {{ background: white; border-bottom: 1px solid #e2e8f0; padding: 16px 24px; display: flex; align-items: center; gap: 16px; }}
-    .back-link {{ color: #64748b; text-decoration: none; display: flex; align-items: center; gap: 8px; font-size: 14px; }}
-    .back-link:hover {{ color: #1e293b; }}
-    .app-title {{ display: flex; align-items: center; gap: 12px; }}
-    .app-title h1 {{ font-size: 20px; font-weight: 600; }}
-    .container {{ max-width: 900px; margin: 0 auto; padding: 24px; }}
-    .card {{ background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; margin-bottom: 24px; }}
-    .card h2 {{ font-size: 18px; font-weight: 600; margin-bottom: 16px; }}
-    .form-group {{ margin-bottom: 16px; }}
-    .form-group label {{ display: block; font-size: 14px; color: #64748b; margin-bottom: 8px; }}
-    .form-group input, .form-group select {{ width: 100%; padding: 10px 14px; background: white; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; }}
-    .form-group input:focus, .form-group select:focus {{ outline: none; border-color: #10b981; }}
-    .form-row {{ display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }}
-    .button-group {{ display: flex; gap: 12px; margin-top: 20px; }}
-    .btn {{ padding: 10px 24px; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; }}
-    .btn-primary {{ background: #10b981; color: white; }}
-    .btn-primary:hover {{ background: #059669; }}
-    .btn-danger {{ background: #ef4444; color: white; }}
-    .btn:disabled {{ opacity: 0.5; cursor: not-allowed; }}
-    .status-bar {{ display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: #f8fafc; border-radius: 8px; margin-bottom: 16px; }}
-    .status-dot {{ width: 10px; height: 10px; border-radius: 50%; background: #e2e8f0; }}
-    .status-dot.running {{ background: #10b981; animation: pulse 2s infinite; }}
-    @keyframes pulse {{ 0%, 100% {{ opacity: 1; }} 50% {{ opacity: 0.5; }} }}
-    .log-container {{ background: #1e293b; color: #e2e8f0; border-radius: 8px; padding: 16px; max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 13px; }}
-    .log-line {{ padding: 4px 0; border-bottom: 1px solid #334155; }}
+    .ft-status-row {{ display: flex; gap: 12px; margin-top: 16px; }}
+    .ft-status-row .ft-btn {{ flex: 1; }}
   </style>
 </head>
 <body>
-  <header class="app-header">
-    <a href="/" class="back-link">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-      返回 FreeTime
+  <header class="ft-header">
+    <a href="/" class="ft-back">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M19 12H5M12 19l-7-7 7-7"/>
+      </svg>
+      <span>FreeTime</span>
     </a>
-    <div class="app-title">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+    <div class="ft-app-icon" style="background: linear-gradient(135deg, #10b981, #059669);">
+      <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+        <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+      </svg>
+    </div>
+    <div class="ft-app-title">
       <h1>超星刷课助手</h1>
     </div>
   </header>
-  <div class="container">
-    <div class="card">
-      <h2>运行状态</h2>
-      <div class="status-bar">
-        <div class="status-dot" id="status-dot"></div>
-        <span id="status-text">未运行</span>
+
+  <div class="ft-container">
+    <!-- 运行状态 -->
+    <div class="ft-card" style="margin-bottom: 20px;">
+      <div class="ft-card-header">
+        <h2>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 6 12 12 16 14"/>
+          </svg>
+          运行状态
+        </h2>
       </div>
-      <div class="button-group">
-        <button class="btn btn-primary" id="start-btn" onclick="startTask()">启动刷课</button>
-        <button class="btn btn-danger" id="stop-btn" onclick="stopTask()" disabled>停止</button>
+      <div class="ft-card-body">
+        <div class="ft-status">
+          <div class="ft-status-dot" id="status-dot"></div>
+          <span class="ft-status-text" id="status-text">未运行</span>
+        </div>
+        <div class="ft-status-row">
+          <button class="ft-btn ft-btn-success" id="start-btn" onclick="startTask()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+            启动刷课
+          </button>
+          <button class="ft-btn ft-btn-danger" id="stop-btn" onclick="stopTask()" disabled>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="6" y="4" width="4" height="16"/>
+              <rect x="14" y="4" width="4" height="16"/>
+            </svg>
+            停止
+          </button>
+        </div>
       </div>
     </div>
-    <div class="card">
-      <h2>课程配置</h2>
-      <div class="form-group">
-        <label>课程链接或名称</label>
-        <input type="text" id="course-input" placeholder="粘贴课程链接或输入课程名称" value="{course_value}">
+
+    <!-- 课程配置 -->
+    <div class="ft-card" style="margin-bottom: 20px;">
+      <div class="ft-card-header">
+        <h2>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+          课程配置
+        </h2>
       </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label>播放倍速</label>
-          <select id="speed-select">{speed_options}</select>
+      <div class="ft-card-body">
+        <div class="ft-form-group">
+          <label class="ft-form-label">课程链接或名称</label>
+          <input type="text" class="ft-input" id="course-input" placeholder="粘贴课程链接或输入课程名称" value="{course_value}">
         </div>
-        <div class="form-group">
-          <label>轮询间隔 (秒)</label>
-          <input type="number" id="interval-input" min="1" max="30" value="{interval_value}">
+        <div class="ft-form-row">
+          <div class="ft-form-group">
+            <label class="ft-form-label">播放倍速</label>
+            <select class="ft-select" id="speed-select">{speed_options}</select>
+          </div>
+          <div class="ft-form-group">
+            <label class="ft-form-label">轮询间隔 (秒)</label>
+            <input type="number" class="ft-input" id="interval-input" min="1" max="30" value="{interval_value}">
+          </div>
         </div>
-      </div>
-      <div class="button-group">
-        <button class="btn btn-primary" onclick="saveConfig()">保存配置</button>
+        <div class="ft-button-group">
+          <button class="ft-btn ft-btn-primary" onclick="saveConfig()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+              <polyline points="17 21 17 13 7 13 7 21"/>
+              <polyline points="7 3 7 8 15 8"/>
+            </svg>
+            保存配置
+          </button>
+        </div>
       </div>
     </div>
-    <div class="card">
-      <h2>运行日志</h2>
-      <div class="log-container" id="log-container">
-        <div class="log-line">等待启动...</div>
+
+    <!-- 运行日志 -->
+    <div class="ft-card">
+      <div class="ft-card-header">
+        <h2>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+            <polyline points="10 9 9 9 8 9"/>
+          </svg>
+          运行日志
+        </h2>
+      </div>
+      <div class="ft-card-body" style="padding: 0;">
+        <div class="ft-log" id="log-container">
+          <div class="ft-log-line">等待启动...</div>
+        </div>
       </div>
     </div>
   </div>
+
   <script>
     let isRunning = false;
     let pollTimer = null;
-    function startTask() {{ fetch('/chaoxing/api/start', {{ method: 'POST' }}).then(r => r.json()).then(d => {{ if(d.status==='ok'){{ updateStatus(true); startPolling(); }} }}); }}
-    function stopTask() {{ fetch('/chaoxing/api/stop', {{ method: 'POST' }}).then(r => r.json()).then(d => {{ if(d.status==='ok'){{ updateStatus(false); stopPolling(); }} }}); }}
+
+    function startTask() {{
+      fetch('/chaoxing/api/start', {{ method: 'POST' }})
+        .then(r => r.json())
+        .then(d => {{
+          if (d.status === 'ok') {{
+            updateStatus(true);
+            startPolling();
+          }}
+        }});
+    }}
+
+    function stopTask() {{
+      fetch('/chaoxing/api/stop', {{ method: 'POST' }})
+        .then(r => r.json())
+        .then(d => {{
+          if (d.status === 'ok') {{
+            updateStatus(false);
+            stopPolling();
+          }}
+        }});
+    }}
+
     function saveConfig() {{
       const v = document.getElementById('course-input').value;
-      const d = {{ speed: parseFloat(document.getElementById('speed-select').value), poll_interval: parseInt(document.getElementById('interval-input').value) }};
-      if(v.startsWith('http')) d.course_url = v; else d.course_name = v;
-      fetch('/chaoxing/api/config', {{ method:'POST', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify(d) }}).then(() => alert('配置已保存'));
+      const d = {{
+        speed: parseFloat(document.getElementById('speed-select').value),
+        poll_interval: parseInt(document.getElementById('interval-input').value)
+      }};
+      if (v.startsWith('http')) d.course_url = v; else d.course_name = v;
+      fetch('/chaoxing/api/config', {{
+        method: 'POST',
+        headers: {{ 'Content-Type': 'application/json' }},
+        body: JSON.stringify(d)
+      }}).then(() => alert('配置已保存'));
     }}
-    function updateStatus(r) {{ isRunning=r; document.getElementById('status-dot').className='status-dot'+(r?' running':''); document.getElementById('status-text').textContent=r?'运行中...':'未运行'; document.getElementById('start-btn').disabled=r; document.getElementById('stop-btn').disabled=!r; }}
-    function startPolling() {{ if(pollTimer) clearInterval(pollTimer); pollTimer=setInterval(fetchStatus,2000); }}
-    function stopPolling() {{ if(pollTimer){{clearInterval(pollTimer);pollTimer=null;}} }}
-    function fetchStatus() {{ fetch('/chaoxing/api/status').then(r=>r.json()).then(d=>{{ updateStatus(d.is_running); document.getElementById('log-container').innerHTML=d.log_lines.map(l=>'<div class="log-line">'+l+'</div>').join(''); }}); }}
+
+    function updateStatus(r) {{
+      isRunning = r;
+      document.getElementById('status-dot').className = 'ft-status-dot' + (r ? ' active' : '');
+      document.getElementById('status-text').textContent = r ? '运行中...' : '未运行';
+      document.getElementById('start-btn').disabled = r;
+      document.getElementById('stop-btn').disabled = !r;
+    }}
+
+    function startPolling() {{
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(fetchStatus, 2000);
+    }}
+
+    function stopPolling() {{
+      if (pollTimer) {{ clearInterval(pollTimer); pollTimer = null; }}
+    }}
+
+    function fetchStatus() {{
+      fetch('/chaoxing/api/status')
+        .then(r => r.json())
+        .then(d => {{
+          updateStatus(d.is_running);
+          document.getElementById('log-container').innerHTML =
+            d.log_lines.map(l => '<div class="ft-log-line">' + l + '</div>').join('');
+        }});
+    }}
+
     fetchStatus();
   </script>
 </body>
