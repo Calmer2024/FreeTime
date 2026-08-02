@@ -176,12 +176,14 @@ body {
 }
 
 .logo-text {
-  font-size: 48px;
+  font-family: 'Bitcount Prop Single', cursive;
+  font-size: 56px;
   font-weight: 700;
   background: linear-gradient(135deg, #fff, #a5b4fc);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+  letter-spacing: -1px;
 }
 
 .tagline {
