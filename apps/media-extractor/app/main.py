@@ -36,7 +36,7 @@ app = FastAPI(
     docs_url="/api/docs",
 )
 cache = ResultCache(settings.cache_ttl_seconds)
-static_dir = Path(__file__).parent / "static"
+static_dir = Path(__file__).parent.parent / "static"
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 
