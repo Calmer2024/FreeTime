@@ -1,12 +1,18 @@
+"""FreeTime - 统一应用工具箱"""
 from __future__ import annotations
 
 import asyncio
+import json
+import subprocess
+import sys
+import threading
 import time
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.cache import ResultCache
@@ -30,17 +36,61 @@ from app.security import ALLOWED_HOST_SUFFIXES, UnsafeUrlError, resolve_content_
 from app.thumbnails import thumbnail_store
 
 
+# ========== FreeTime 主应用 ==========
+
 app = FastAPI(
     title="FreeTime",
     version="1.0.0",
     docs_url="/api/docs",
 )
-cache = ResultCache(settings.cache_ttl_seconds)
-static_dir = Path(__file__).parent.parent / "static"
-portal_dir = Path(__file__).parent.parent.parent.parent / "portal"
-app.mount("/static", StaticFiles(directory=static_dir), name="static")
-app.mount("/portal", StaticFiles(directory=portal_dir), name="portal")
 
+# 目录配置
+BASE_DIR = Path(__file__).parent.parent.parent.parent  # FreeTime 根目录
+PORTAL_DIR = BASE_DIR / "portal"
+STATIC_DIR = Path(__file__).parent.parent / "static"
+CHAOXING_DIR = BASE_DIR / "apps" / "chaoxing-auto"
+
+# 挂载静态文件
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+app.mount("/portal", StaticFiles(directory=PORTAL_DIR), name="portal")
+
+# 超星 API 路由
+chaoxing_router = APIRouter(prefix="/chaoxing/api", tags=["chaoxing"])
+
+
+# ========== 缓存实例 ==========
+
+cache = ResultCache(settings.cache_ttl_seconds)
+
+
+# ========== 超星刷课助手状态 ==========
+
+class ChaoxingState:
+    def __init__(self):
+        self.process: subprocess.Popen | None = None
+        self.is_running = False
+        self.log_lines: list[str] = []
+        self.config = self._load_config()
+
+    def _load_config(self) -> dict:
+        config_path = CHAOXING_DIR / "config.json"
+        if config_path.exists():
+            return json.loads(config_path.read_text(encoding="utf-8"))
+        return {
+            "course": {"url": "", "name": ""},
+            "playback": {"speed": 2.0, "poll_interval_seconds": 3},
+        }
+
+    def save_config(self, config: dict) -> None:
+        config_path = CHAOXING_DIR / "config.json"
+        config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
+        self.config = config
+
+
+chaoxing = ChaoxingState()
+
+
+# ========== 工具函数 ==========
 
 async def _stabilize_result_thumbnail(result: AnalyzeResponse) -> bool:
     original = result.metadata.thumbnail
@@ -142,36 +192,236 @@ def _ensure_cleaned_article(payload: dict[str, object]) -> dict[str, object]:
     return payload
 
 
+# ========== 页面路由 ==========
+
 @app.get("/", include_in_schema=False)
-async def portal() -> FileResponse:
+async def portal() -> HTMLResponse:
     """FreeTime 主门户入口"""
-    return FileResponse(
-        portal_dir / "index.html",
-        headers={"Cache-Control": "no-store"},
-    )
+    content = (PORTAL_DIR / "index.html").read_text(encoding="utf-8")
+    return HTMLResponse(content=content)
 
 
 @app.get("/extractor", include_in_schema=False)
-async def extractor_index() -> FileResponse:
+async def extractor_index() -> HTMLResponse:
     """流媒体内容提取器入口"""
-    return FileResponse(
-        static_dir / "index.html",
-        headers={"Cache-Control": "no-store"},
-    )
+    content = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    return HTMLResponse(content=content)
 
+
+@app.get("/chaoxing", include_in_schema=False)
+async def chaoxing_index() -> HTMLResponse:
+    """超星刷课助手入口"""
+    config = chaoxing.config
+    speed_options = ""
+    for s in [1, 1.5, 2, 3]:
+        selected = "selected" if config["playback"]["speed"] == s else ""
+        speed_options += f'<option value="{s}" {selected}>{s}x</option>'
+
+    course_value = config['course']['url'] or config['course']['name']
+    interval_value = config['playback']['poll_interval_seconds']
+
+    html = f"""<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>超星刷课助手 - FreeTime</title>
+  <style>
+    * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8fafc; color: #1e293b; min-height: 100vh; }}
+    .app-header {{ background: white; border-bottom: 1px solid #e2e8f0; padding: 16px 24px; display: flex; align-items: center; gap: 16px; }}
+    .back-link {{ color: #64748b; text-decoration: none; display: flex; align-items: center; gap: 8px; font-size: 14px; }}
+    .back-link:hover {{ color: #1e293b; }}
+    .app-title {{ display: flex; align-items: center; gap: 12px; }}
+    .app-title h1 {{ font-size: 20px; font-weight: 600; }}
+    .container {{ max-width: 900px; margin: 0 auto; padding: 24px; }}
+    .card {{ background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; margin-bottom: 24px; }}
+    .card h2 {{ font-size: 18px; font-weight: 600; margin-bottom: 16px; }}
+    .form-group {{ margin-bottom: 16px; }}
+    .form-group label {{ display: block; font-size: 14px; color: #64748b; margin-bottom: 8px; }}
+    .form-group input, .form-group select {{ width: 100%; padding: 10px 14px; background: white; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; }}
+    .form-group input:focus, .form-group select:focus {{ outline: none; border-color: #10b981; }}
+    .form-row {{ display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }}
+    .button-group {{ display: flex; gap: 12px; margin-top: 20px; }}
+    .btn {{ padding: 10px 24px; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; }}
+    .btn-primary {{ background: #10b981; color: white; }}
+    .btn-primary:hover {{ background: #059669; }}
+    .btn-danger {{ background: #ef4444; color: white; }}
+    .btn:disabled {{ opacity: 0.5; cursor: not-allowed; }}
+    .status-bar {{ display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: #f8fafc; border-radius: 8px; margin-bottom: 16px; }}
+    .status-dot {{ width: 10px; height: 10px; border-radius: 50%; background: #e2e8f0; }}
+    .status-dot.running {{ background: #10b981; animation: pulse 2s infinite; }}
+    @keyframes pulse {{ 0%, 100% {{ opacity: 1; }} 50% {{ opacity: 0.5; }} }}
+    .log-container {{ background: #1e293b; color: #e2e8f0; border-radius: 8px; padding: 16px; max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 13px; }}
+    .log-line {{ padding: 4px 0; border-bottom: 1px solid #334155; }}
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <a href="/" class="back-link">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      返回 FreeTime
+    </a>
+    <div class="app-title">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+      <h1>超星刷课助手</h1>
+    </div>
+  </header>
+  <div class="container">
+    <div class="card">
+      <h2>运行状态</h2>
+      <div class="status-bar">
+        <div class="status-dot" id="status-dot"></div>
+        <span id="status-text">未运行</span>
+      </div>
+      <div class="button-group">
+        <button class="btn btn-primary" id="start-btn" onclick="startTask()">启动刷课</button>
+        <button class="btn btn-danger" id="stop-btn" onclick="stopTask()" disabled>停止</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>课程配置</h2>
+      <div class="form-group">
+        <label>课程链接或名称</label>
+        <input type="text" id="course-input" placeholder="粘贴课程链接或输入课程名称" value="{course_value}">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>播放倍速</label>
+          <select id="speed-select">{speed_options}</select>
+        </div>
+        <div class="form-group">
+          <label>轮询间隔 (秒)</label>
+          <input type="number" id="interval-input" min="1" max="30" value="{interval_value}">
+        </div>
+      </div>
+      <div class="button-group">
+        <button class="btn btn-primary" onclick="saveConfig()">保存配置</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>运行日志</h2>
+      <div class="log-container" id="log-container">
+        <div class="log-line">等待启动...</div>
+      </div>
+    </div>
+  </div>
+  <script>
+    let isRunning = false;
+    let pollTimer = null;
+    function startTask() {{ fetch('/chaoxing/api/start', {{ method: 'POST' }}).then(r => r.json()).then(d => {{ if(d.status==='ok'){{ updateStatus(true); startPolling(); }} }}); }}
+    function stopTask() {{ fetch('/chaoxing/api/stop', {{ method: 'POST' }}).then(r => r.json()).then(d => {{ if(d.status==='ok'){{ updateStatus(false); stopPolling(); }} }}); }}
+    function saveConfig() {{
+      const v = document.getElementById('course-input').value;
+      const d = {{ speed: parseFloat(document.getElementById('speed-select').value), poll_interval: parseInt(document.getElementById('interval-input').value) }};
+      if(v.startsWith('http')) d.course_url = v; else d.course_name = v;
+      fetch('/chaoxing/api/config', {{ method:'POST', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify(d) }}).then(() => alert('配置已保存'));
+    }}
+    function updateStatus(r) {{ isRunning=r; document.getElementById('status-dot').className='status-dot'+(r?' running':''); document.getElementById('status-text').textContent=r?'运行中...':'未运行'; document.getElementById('start-btn').disabled=r; document.getElementById('stop-btn').disabled=!r; }}
+    function startPolling() {{ if(pollTimer) clearInterval(pollTimer); pollTimer=setInterval(fetchStatus,2000); }}
+    function stopPolling() {{ if(pollTimer){{clearInterval(pollTimer);pollTimer=null;}} }}
+    function fetchStatus() {{ fetch('/chaoxing/api/status').then(r=>r.json()).then(d=>{{ updateStatus(d.is_running); document.getElementById('log-container').innerHTML=d.log_lines.map(l=>'<div class="log-line">'+l+'</div>').join(''); }}); }}
+    fetchStatus();
+  </script>
+</body>
+</html>"""
+    return HTMLResponse(content=html)
+
+
+# ========== 超星刷课助手 API ==========
+
+@chaoxing_router.get("/config")
+async def chaoxing_config_get():
+    return chaoxing.config
+
+
+@chaoxing_router.post("/config")
+async def chaoxing_config_update(data: dict[str, Any]):
+    config = chaoxing.config
+    if "course_url" in data:
+        config["course"]["url"] = data["course_url"]
+    if "course_name" in data:
+        config["course"]["name"] = data["course_name"]
+    if "speed" in data:
+        config["playback"]["speed"] = float(data["speed"])
+    if "poll_interval" in data:
+        config["playback"]["poll_interval_seconds"] = int(data["poll_interval"])
+    chaoxing.save_config(config)
+    return {"status": "ok"}
+
+
+@chaoxing_router.post("/start")
+async def chaoxing_start():
+    if chaoxing.is_running:
+        raise HTTPException(status_code=400, detail="任务已在运行中")
+    chaoxing.log_lines = []
+    chaoxing.is_running = True
+
+    def run_task():
+        try:
+            script_path = CHAOXING_DIR / "main.py"
+            chaoxing.process = subprocess.Popen(
+                [sys.executable, str(script_path)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+            for line in chaoxing.process.stdout:
+                chaoxing.log_lines.append(line.strip())
+                if len(chaoxing.log_lines) > 1000:
+                    chaoxing.log_lines.pop(0)
+            chaoxing.process.wait()
+        except Exception as e:
+            chaoxing.log_lines.append(f"错误: {e}")
+        finally:
+            chaoxing.is_running = False
+            chaoxing.process = None
+
+    thread = threading.Thread(target=run_task, daemon=True)
+    thread.start()
+    return {"status": "ok", "message": "任务已启动"}
+
+
+@chaoxing_router.post("/stop")
+async def chaoxing_stop():
+    if not chaoxing.is_running or chaoxing.process is None:
+        raise HTTPException(status_code=400, detail="没有运行中的任务")
+    try:
+        chaoxing.process.terminate()
+        chaoxing.process.wait(timeout=5)
+    except Exception:
+        chaoxing.process.kill()
+    chaoxing.is_running = False
+    chaoxing.process = None
+    chaoxing.log_lines.append("任务已手动停止")
+    return {"status": "ok", "message": "任务已停止"}
+
+
+@chaoxing_router.get("/status")
+async def chaoxing_status():
+    return {
+        "is_running": chaoxing.is_running,
+        "log_lines": chaoxing.log_lines[-100:],
+    }
+
+
+# 注册超星路由
+app.include_router(chaoxing_router)
+
+
+# ========== 流媒体内容提取器 API ==========
 
 @app.get("/api/health")
 async def health() -> dict[str, object]:
     return {
         "status": "ok",
+        "apps": ["extractor", "chaoxing"],
         "mimo_configured": bool(settings.mimo_api_key),
         "supported_platforms": [
             "抖音", "哔哩哔哩", "YouTube", "快手", "微博", "小红书", "视频号"
         ],
-        "accepted_inputs": [
-            "文章 URL", "平台链接/分享文本", "无有效链接时自动组合文本+图片+音频+视频"
-        ],
-        "extraction_protocol": "structured-information-v4",
     }
 
 
