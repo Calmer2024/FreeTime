@@ -228,6 +228,7 @@ async def chaoxing_index() -> HTMLResponse:
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>超星刷课助手 - FreeTime</title>
+  <link rel="icon" type="image/png" href="/static/icon_freetime.png">
   <style>
     :root {{
       color-scheme: light;
