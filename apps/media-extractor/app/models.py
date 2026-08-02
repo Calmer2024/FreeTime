@@ -18,7 +18,7 @@ StructuredSentence = Annotated[
         strip_whitespace=True,
         min_length=8,
         max_length=300,
-        pattern=r".*[\u4e00-\u9fff].*",
+        pattern=r".*[一-鿿].*",
     ),
 ]
 
@@ -28,7 +28,6 @@ class AnalyzeRequest(BaseModel):
     input_kind: Literal["auto", "article", "platform"] = "auto"
     mode: Literal["auto", "visual"] = "auto"
     refresh: bool = False
-    verify: bool = True
 
 
 class VideoMetadata(BaseModel):
@@ -75,14 +74,6 @@ class StructuredInformation(BaseModel):
             seen.add(identity)
             normalized.append(item)
         return normalized
-
-
-class VerifyRequest(BaseModel):
-    structured_data: StructuredInformation
-    cache_key: str | None = Field(
-        default=None,
-        pattern=r"^[a-f0-9]{64}$",
-    )
 
 
 class KeyframeEvidence(BaseModel):
@@ -160,6 +151,7 @@ class AnalyzeResponse(BaseModel):
     structured_input_truncated: bool = False
     cleaned_article: str = ""
     timings: list[StageTiming] = Field(default_factory=list)
+    orchestration_timings: list[StageTiming] = Field(default_factory=list)
     extraction_milliseconds: int = 0
     full_pipeline_milliseconds: int = 0
     estimated_cost_cny: float = 0
@@ -178,7 +170,6 @@ class AnalyzeResponse(BaseModel):
     )
     extraction_plan: ExtractionPlan = Field(default_factory=ExtractionPlan)
     cost_trace: list[CostStep] = Field(default_factory=list)
-    verification: dict[str, Any] | None = None
     extracted_at: datetime = Field(default_factory=datetime.now)
 
 

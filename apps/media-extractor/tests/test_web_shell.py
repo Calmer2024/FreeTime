@@ -71,6 +71,10 @@ def test_full_pipeline_details_have_one_unified_process_view() -> None:
     assert 'id="llm-structured-input"' in html
     assert "fullPipelineMilliseconds" in script
     assert "verificationTraceItems" in script
+    assert "orchestrationTraceItems" in script
+    assert "输入解析与安全展开" in script
+    assert "封面获取与转存" in script
+    assert "其他编排开销" in script
     assert "data.full_source_text" in script
     assert 'id="thumbnail-placeholder"' in html
     assert "showThumbnail" in script

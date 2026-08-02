@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="FreeTime - 帮助你节省时间的应用工具箱">
+  <title>FreeTime - 节省时间的工具箱</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="portal">
+    <!-- 背景装饰 -->
+    <div class="bg-decoration">
+      <div class="gradient-orb orb-1"></div>
+      <div class="gradient-orb orb-2"></div>
+      <div class="gradient-orb orb-3"></div>
+    </div>
+
+    <!-- 主内容 -->
+    <main class="main-content">
+      <!-- 头部 -->
+      <header class="header">
+        <div class="logo">
+          <div class="logo-icon">
+            <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect width="40" height="40" rx="10" fill="url(#logo-gradient)"/>
+              <path d="M12 20L18 26L28 14" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+              <defs>
+                <linearGradient id="logo-gradient" x1="0" y1="0" x2="40" y2="40">
+                  <stop stop-color="#6366f1"/>
+                  <stop offset="1" stop-color="#8b5cf6"/>
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+          <h1 class="logo-text">FreeTime</h1>
+        </div>
+        <p class="tagline">帮助你节省时间的应用工具箱</p>
+      </header>
+
+      <!-- 应用卡片网格 -->
+      <section class="apps-grid">
+        <!-- 流媒体内容提取器 -->
+        <a href="/apps/media-extractor/" class="app-card">
+          <div class="card-icon">
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect width="48" height="48" rx="12" fill="url(#card1-gradient)"/>
+              <path d="M20 16L32 24L20 32V16Z" fill="white"/>
+              <defs>
+                <linearGradient id="card1-gradient" x1="0" y1="0" x2="48" y2="48">
+                  <stop stop-color="#f43f5e"/>
+                  <stop offset="1" stop-color="#ec4899"/>
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+          <div class="card-content">
+            <h2>流媒体内容提取器</h2>
+            <p>一键提取抖音、B站、YouTube、快手、微博、小红书、视频号等热门平台的内容，支持视频、图文、直播等多种形式。</p>
+            <div class="card-tags">
+              <span class="tag">视频提取</span>
+              <span class="tag">图文解析</span>
+              <span class="tag">一键复制</span>
+            </div>
+          </div>
+          <div class="card-arrow">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+        </a>
+
+        <!-- 超星刷课助手 -->
+        <a href="/apps/chaoxing-auto/" class="app-card">
+          <div class="card-icon">
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect width="48" height="48" rx="12" fill="url(#card2-gradient)"/>
+              <path d="M16 20H32M16 28H24" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+              <circle cx="24" cy="16" r="4" fill="white"/>
+              <defs>
+                <linearGradient id="card2-gradient" x1="0" y1="0" x2="48" y2="48">
+                  <stop stop-color="#10b981"/>
+                  <stop offset="1" stop-color="#059669"/>
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+          <div class="card-content">
+            <h2>超星刷课助手</h2>
+            <p>自动完成超星学习通课程视频播放，支持倍速播放、自动跳过弹窗、断点续播，让你轻松完成网课任务。</p>
+            <div class="card-tags">
+              <span class="tag">自动播放</span>
+              <span class="tag">倍速刷课</span>
+              <span class="tag">弹窗处理</span>
+            </div>
+          </div>
+          <div class="card-arrow">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+        </a>
+
+        <!-- 更多应用占位 -->
+        <div class="app-card coming-soon">
+          <div class="card-icon">
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect width="48" height="48" rx="12" fill="url(#card3-gradient)" opacity="0.5"/>
+              <path d="M24 16V32M16 24H32" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+              <defs>
+                <linearGradient id="card3-gradient" x1="0" y1="0" x2="48" y2="48">
+                  <stop stop-color="#6366f1"/>
+                  <stop offset="1" stop-color="#8b5cf6"/>
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+          <div class="card-content">
+            <h2>更多应用开发中...</h2>
+            <p>我们正在开发更多实用工具，敬请期待！如果你有好的建议，欢迎反馈。</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 底部 -->
+      <footer class="footer">
+        <p>FreeTime &copy; 2026 &middot; 帮助你节省时间的工具箱</p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

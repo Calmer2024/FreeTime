@@ -11,6 +11,48 @@ let currentCacheKey = null;
 refreshIcons();
 loadHistory();
 
+// 一键复制功能
+function copyToClipboard(text, button) {
+  navigator.clipboard.writeText(text).then(() => {
+    const originalText = button.querySelector("span").textContent;
+    button.querySelector("span").textContent = "已复制!";
+    button.classList.add("copied");
+    setTimeout(() => {
+      button.querySelector("span").textContent = originalText;
+      button.classList.remove("copied");
+    }, 2000);
+  }).catch(err => {
+    console.error("复制失败:", err);
+  });
+}
+
+// 绑定复制按钮事件
+document.addEventListener("DOMContentLoaded", () => {
+  const copyContentBtn = $("copy-content");
+  const copyArticleBtn = $("copy-article");
+
+  if (copyContentBtn) {
+    copyContentBtn.addEventListener("click", () => {
+      if (!currentResult) return;
+      const text = [
+        currentResult.metadata.title,
+        currentResult.summary,
+        ...(currentResult.key_points || []),
+        currentResult.cleaned_article || ""
+      ].filter(Boolean).join("\n\n");
+      copyToClipboard(text, copyContentBtn);
+    });
+  }
+
+  if (copyArticleBtn) {
+    copyArticleBtn.addEventListener("click", () => {
+      const article = $("cleaned-article");
+      if (!article) return;
+      copyToClipboard(article.textContent, copyArticleBtn);
+    });
+  }
+});
+
 function extractValidHttpUrl(value) {
   const match = String(value || "").match(/https?:\/\/[^\s<>\]）)】]+/i);
   if (!match) return "";
@@ -55,26 +97,25 @@ $("form").addEventListener("submit", async (event) => {
   $("submit").disabled = true;
   const route = selectInputRoute();
   const analyzingText = route.kind === "text";
-  $("loading-label").textContent = analyzingText ? "分析文字并核实信源" : $("mode").value === "visual" ? "提取全模态内容并核实信源" : "提取内容并核实信源";
+  $("loading-label").textContent = analyzingText ? "正在分析文字" : $("mode").value === "visual" ? "正在提取全模态内容" : "正在提取内容";
   clock = setInterval(() => {
     $("timer").textContent = `${((performance.now() - started) / 1000).toFixed(1)}s`;
   }, 100);
   try {
     if (route.kind === "empty") {
-      throw new Error("请粘贴链接、分享文本，或直接输入需要核验的文字");
+      throw new Error("请粘贴链接、分享文本，或直接输入需要提取的文字");
     }
     let response;
     if (route.kind === "text") {
       const body = new FormData();
       body.append("title", route.text.slice(0, 200));
       body.append("text", route.text);
-      body.append("verify", "true");
       response = await fetch("/api/analyze/upload", { method: "POST", body });
     } else {
       response = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: route.url, input_kind: "auto", mode: $("mode").value, refresh: refreshNext, verify: true })
+        body: JSON.stringify({ url: route.url, input_kind: "auto", mode: $("mode").value, refresh: refreshNext })
       });
     }
     const data = await response.json();
@@ -175,7 +216,6 @@ function render(data) {
     }</section>`
   ).join("");
   $("json-output").textContent = JSON.stringify(structured, null, 2);
-  renderVerificationSafely(data.verification, structured);
   renderCleanedArticle(
     data.cleaned_article ||
     organizeSourceText(data.full_source_text || data.transcript || data.transcript_excerpt || "")
@@ -196,17 +236,24 @@ function render(data) {
   renderStructuredInput(data);
   $("workbench").hidden = false;
   $("result").classList.add("active");
-  const verificationStatus = data.verification?.status;
-  switchResultView(verificationStatus && verificationStatus !== "skipped" ? "verification" : "overview");
+  switchResultView("overview");
   refreshIcons();
   $("content-scroll").scrollTo({ top: 0, behavior: "smooth" });
 }
 
+function visibleExtractionMilliseconds(data) {
+  const stages = data.timings || [];
+  return stages.length
+    ? stages.reduce((total, item) => total + Number(item.milliseconds || 0), 0)
+    : Number(data.extraction_milliseconds || 0);
+}
+
 function fullPipelineMilliseconds(data) {
-  const extraction = Number(data.extraction_milliseconds) ||
-    (data.timings || []).reduce((total, item) => total + Number(item.milliseconds || 0), 0);
-  const verification = Number(data.verification?.timings?.total_seconds || 0) * 1000;
-  return Number(data.full_pipeline_milliseconds) || Math.round(extraction + verification);
+  const orchestration = (data.orchestration_timings || [])
+    .reduce((total, item) => total + Number(item.milliseconds || 0), 0);
+  return Number(data.full_pipeline_milliseconds) || Math.round(
+    visibleExtractionMilliseconds(data) + orchestration
+  );
 }
 
 function renderStructuredInput(data) {
@@ -223,17 +270,24 @@ function renderStructuredInput(data) {
 }
 
 function renderPipelineTimings(data) {
-  const extractionMilliseconds = Number(data.extraction_milliseconds) ||
-    (data.timings || []).reduce((total, item) => total + Number(item.milliseconds || 0), 0);
-  const verificationMilliseconds = Math.round(Number(data.verification?.timings?.total_seconds || 0) * 1000);
+  const extractionMilliseconds = visibleExtractionMilliseconds(data);
   const totalMilliseconds = fullPipelineMilliseconds(data);
   const extractionTraceItems = (data.timings || []).map(item => ({
     phase: "信息提取", name: item.name, milliseconds: Number(item.milliseconds || 0), kind: "extraction"
   }));
-  const verificationTraceItems = Object.entries(data.verification?.timings?.stages || {}).map(([name, seconds]) => ({
-    phase: "信源核实", name: stageLabel(name), milliseconds: Math.round(Number(seconds || 0) * 1000), kind: "verification"
+  const orchestrationTraceItems = (data.orchestration_timings || []).map(item => ({
+    phase: "全流程", name: item.name, milliseconds: Number(item.milliseconds || 0), kind: "orchestration"
   }));
-  const traceItems = [...extractionTraceItems, ...verificationTraceItems];
+  const orchestrationByName = Object.fromEntries(orchestrationTraceItems.map(item => [item.name, item]));
+  const traceItems = [
+    orchestrationByName["输入解析与安全展开"],
+    ...extractionTraceItems,
+    orchestrationByName["封面获取与转存"],
+    orchestrationByName["其他编排开销"],
+    ...orchestrationTraceItems.filter(item => ![
+      "输入解析与安全展开", "封面获取与转存", "其他编排开销"
+    ].includes(item.name))
+  ].filter(Boolean);
   const traceHtml = traceItems.map(item =>
     `<div class="trace-item trace-${item.kind}"><span>${escapeHtml(item.phase)} · ${escapeHtml(item.name)}</span><strong>${formatDuration(item.milliseconds)}</strong></div>`
   ).join("");
@@ -242,126 +296,8 @@ function renderPipelineTimings(data) {
   $("process-trace").innerHTML = traceHtml + totalsHtml;
   $("full-pipeline-summary").innerHTML = [
     ["信息提取", extractionMilliseconds],
-    ["信源核实", verificationMilliseconds],
     ["全流程", totalMilliseconds]
-  ].map(([label, milliseconds], index) => `<div class="pipeline-summary-item ${index === 2 ? "primary" : ""}"><span>${escapeHtml(label)}</span><strong>${formatDuration(milliseconds)}</strong></div>`).join("");
-}
-
-function renderVerificationSafely(verification, structured) {
-  const requiredContainers = ["trust-hero", "claim-checks", "evidence-list", "trust-audit-body"];
-  if (requiredContainers.some(id => !$(id))) {
-    console.error("[MiMo Trust] 页面资源版本不一致，缺少信源核实容器");
-    return;
-  }
-  try {
-    renderVerification(verification, structured);
-  } catch (error) {
-    console.error("[MiMo Trust] 信源核实结果渲染失败", error);
-    $("trust-hero").innerHTML = `<div class="trust-empty-state">
-      <span class="verdict-mark verdict-error"><i data-lucide="triangle-alert" aria-hidden="true"></i></span>
-      <div><p class="trust-kicker">结果展示失败</p><h2>核验数据已返回，但页面无法解析</h2>
-      <button class="secondary-button" type="button" onclick="window.location.reload()"><i data-lucide="refresh-cw" aria-hidden="true"></i>刷新页面资源</button></div>
-    </div>`;
-    $("claim-checks").innerHTML = '<div class="history-empty">请刷新页面后重试</div>';
-    $("evidence-list").innerHTML = '<div class="history-empty">请刷新页面后重试</div>';
-    $("trust-audit-body").innerHTML = '<div class="history-empty">当前没有可展示的信源审计记录</div>';
-  }
-}
-
-function renderVerification(verification, structured) {
-  if (!verification || verification.status === "failed" || verification.status === "skipped") {
-    const failed = verification?.status === "failed";
-    const message = verification?.message || "当前结果尚未执行信源核实。";
-    $("trust-hero").innerHTML = `<div class="trust-empty-state">
-      <span class="verdict-mark ${failed ? "verdict-error" : "verdict-pending"}"><i data-lucide="${failed ? "triangle-alert" : "search-check"}" aria-hidden="true"></i></span>
-      <div><p class="trust-kicker">${failed ? "核验未完成" : "等待核验"}</p><h2>${escapeHtml(message)}</h2>
-      ${verification?.status !== "skipped" ? `<button class="secondary-button" type="button" onclick="retryVerification()"><i data-lucide="${failed ? "refresh-cw" : "search-check"}" aria-hidden="true"></i>${failed ? "重试信源核实" : "开始信源核实"}</button>` : ""}</div>
-    </div>`;
-    $("claim-checks").innerHTML = '<div class="history-empty">暂无逐项结论</div>';
-    $("evidence-list").innerHTML = '<div class="history-empty">暂无引用证据</div>';
-    $("trust-audit-body").innerHTML = '<div class="history-empty">当前没有可展示的信源审计记录</div>';
-    refreshIcons();
-    return;
-  }
-
-  const checks = verification.claim_checks || [];
-  const evidence = verification.evidence_used || [];
-  const evidenceById = Object.fromEntries(evidence.map(item => [item.id, item]));
-  const verdictClass = verdictTone(verification.overall_verdict);
-  $("trust-hero").innerHTML = `<div class="trust-verdict ${verdictClass}">
-    <span class="verdict-mark"><i data-lucide="${verdictIcon(verification.overall_verdict)}" aria-hidden="true"></i></span>
-    <div class="trust-verdict-copy"><p class="trust-kicker">综合判定</p><h2>${escapeHtml(verification.overall_verdict || "证据不足")}</h2>
-      <p>${escapeHtml(verification.conclusion || "核验已完成。")}</p></div>
-    <div class="trust-stats"><div><strong>${checks.length}</strong><span>项主张</span></div><div><strong>${Number(verification.evidence_reviewed_count || 0)}</strong><span>条已审阅</span></div><div><strong>${Number(verification.evidence_selected_count || 0)}</strong><span>条入选</span></div></div>
-  </div>`;
-
-  $("claim-checks").innerHTML = checks.map(check => {
-    const sources = (check.source_ids || []).map(id => evidenceById[id]).filter(Boolean);
-    return `<article class="claim-card">
-      <div class="claim-card-head"><span class="claim-id">${escapeHtml(check.claim_id)}</span><span class="claim-category">${escapeHtml(check.category)}</span><span class="claim-verdict ${verdictTone(check.verdict)}">${escapeHtml(check.verdict)}</span></div>
-      <h3>${escapeHtml(check.claim)}</h3><p>${escapeHtml(check.basis)}</p>
-      ${sources.length ? `<div class="claim-sources">${sources.map(source => sourceLink(source, true)).join("")}</div>` : '<div class="claim-no-source">本项没有达到引用门槛的直接证据</div>'}
-    </article>`;
-  }).join("") || '<div class="history-empty">没有可展示的逐项结论</div>';
-
-  const cited = [...new Set((verification.source_ids || []).map(id => evidenceById[id]).filter(Boolean))];
-  $("evidence-list").innerHTML = cited.map(source => {
-    const profile = source.evidence_profile || {};
-    return `<article class="evidence-card"><div class="evidence-meta"><span>${escapeHtml(source.id)}</span><span>${escapeHtml(source.tier || "")}</span><span>${escapeHtml(profile.source_role || source.provider || "来源")}</span></div>
-      <h3>${sourceLink(source, false)}</h3><p>${escapeHtml(source.snippet || "无摘要")}</p></article>`;
-  }).join("") || '<div class="history-empty">最终报告未引用证据；请查看逐项结论中的证据缺口。</div>';
-
-  const timing = verification.timings || {};
-  const stages = timing.stages || {};
-  const plan = verification.search_plan || {};
-  const uncertainties = verification.uncertainties || [];
-  $("trust-audit-body").innerHTML = `<div class="audit-metrics">
-    ${Object.entries(stages).map(([name, seconds]) => `<div><span>${escapeHtml(stageLabel(name))}</span><strong>${Number(seconds).toFixed(2)}s</strong></div>`).join("")}
-    <div><span>总耗时</span><strong>${Number(timing.total_seconds || 0).toFixed(2)}s</strong></div>
-  </div>
-  <div class="audit-block"><h3>检索计划</h3><p>${escapeHtml(plan.reasoning || "使用保底检索计划")}</p><ol>${(plan.web_queries || []).map(query => `<li>${escapeHtml(query)}</li>`).join("")}</ol></div>
-  <div class="audit-block"><h3>不确定性</h3>${uncertainties.length ? `<ul>${uncertainties.map(item => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : "<p>无额外不确定性说明。</p>"}</div>
-  <div class="audit-foot">案例 ${escapeHtml(verification.case_id)} · 运行 ${escapeHtml(verification.run_id)}</div>`;
-}
-
-async function retryVerification() {
-  if (!currentResult?.structured_data) return;
-  $("trust-hero").innerHTML = '<div class="trust-empty-state"><span class="spinner" aria-hidden="true"></span><div><p class="trust-kicker">正在重新核验</p><h2>检索并评估多源证据</h2></div></div>';
-  try {
-    const response = await fetch("/api/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ structured_data: currentResult.structured_data, cache_key: currentCacheKey }) });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.detail || "核验失败");
-    currentResult.verification = data;
-    renderVerification(data, currentResult.structured_data);
-    if (currentCacheKey) loadHistory();
-  } catch (error) {
-    renderVerification({ status: "failed", message: error.message }, currentResult.structured_data);
-  }
-  refreshIcons();
-}
-
-function sourceLink(source, compact) {
-  const url = /^https?:\/\//i.test(source.url || "") ? source.url : "";
-  const label = compact ? `${source.id} · ${source.title || source.url}` : (source.title || source.url || source.id);
-  return url ? `<a href="${escapeAttribute(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}<i data-lucide="external-link" aria-hidden="true"></i></a>` : `<span>${escapeHtml(label)}</span>`;
-}
-
-function verdictTone(verdict) {
-  if (["属实", "基本属实"].includes(verdict)) return "verdict-positive";
-  if (["虚假", "误导"].includes(verdict)) return "verdict-negative";
-  if (["部分属实"].includes(verdict)) return "verdict-mixed";
-  return "verdict-pending";
-}
-
-function verdictIcon(verdict) {
-  if (["属实", "基本属实"].includes(verdict)) return "badge-check";
-  if (["虚假", "误导"].includes(verdict)) return "badge-x";
-  if (verdict === "部分属实") return "circle-dot-dashed";
-  return "circle-help";
-}
-
-function stageLabel(name) {
-  return ({ search_plan: "检索规划", retrieval: "多源检索", evidence_triage: "证据初筛", report_generation: "结论生成" })[name] || name;
+  ].map(([label, milliseconds], index) => `<div class="pipeline-summary-item ${index === 1 ? "primary" : ""}"><span>${escapeHtml(label)}</span><strong>${formatDuration(milliseconds)}</strong></div>`).join("");
 }
 
 function formatDuration(milliseconds) {
@@ -388,11 +324,10 @@ async function loadHistory() {
       const result = item.result;
       const date = new Date(item.created_at).toLocaleString("zh-CN");
       const coverage = result.coverage || {};
-      const verdict = result.verification?.overall_verdict;
       return `<div class="history-item">
         <div>
           <p class="history-title">${escapeHtml(result.metadata.title)}</p>
-          <div class="history-meta">${escapeHtml(result.metadata.platform)} / ${escapeHtml(strategyLabels[result.strategy] || result.strategy)} / ${escapeHtml(coverageStatusLabels[coverage.status] || coverage.status || "未知")}${verdict ? ` / 核验：${escapeHtml(verdict)}` : " / 待核验"} / ${escapeHtml((result.structured_data || {}).case_id || "unstructured")} / ${escapeHtml(date)}${item.expired ? " / 已过期" : ""}</div>
+          <div class="history-meta">${escapeHtml(result.metadata.platform)} / ${escapeHtml(strategyLabels[result.strategy] || result.strategy)} / ${escapeHtml(coverageStatusLabels[coverage.status] || coverage.status || "未知")} / ${escapeHtml((result.structured_data || {}).case_id || "unstructured")} / ${escapeHtml(date)}${item.expired ? " / 已过期" : ""}</div>
         </div>
         <div class="history-actions">
           <button type="button" onclick="viewStored('${item.cache_key}')"><i data-lucide="eye" aria-hidden="true"></i>查看</button>

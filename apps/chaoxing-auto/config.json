@@ -1,0 +1,15 @@
+{
+  "course": {
+    "url": "https://mooc1.chaoxing.com/mycourse/studentstudy?chapterId=1110185779&courseId=260476465&clazzid=139136506&cpi=410961455&enc=e26d268464e23d9fe7d6c54ead798a22&mooc2=1&hidetype=0&openc=45f59ed9af0618afdd006227826decf1",
+    "name": "物理化学"
+  },
+  "playback": {
+    "speed": 2.0,
+    "poll_interval_seconds": 3,
+    "max_retries": 3,
+    "load_timeout_seconds": 60
+  },
+  "auth": {
+    "state_file": "auth_state.json"
+  }
+}

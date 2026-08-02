@@ -3,21 +3,31 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="MiMo Trust 从视频信息提取到多源证据核实的全链路工作台">
-  <title>MiMo Trust - 全链路信源核实</title>
-  <link rel="stylesheet" href="/static/app.css?v=0.5.1">
+  <meta name="description" content="FreeTime 流媒体内容提取器 - 一键提取热门平台内容">
+  <title>流媒体内容提取器 - FreeTime</title>
+  <link rel="stylesheet" href="/static/app.css?v=1.0.0">
 </head>
 <body>
   <div class="app-shell">
+    <header class="app-header">
+      <a href="/" class="back-link">
+        <i data-lucide="arrow-left" aria-hidden="true"></i>
+        <span>返回 FreeTime</span>
+      </a>
+      <div class="app-title">
+        <i data-lucide="video" aria-hidden="true"></i>
+        <h1>流媒体内容提取器</h1>
+      </div>
+    </header>
     <main class="content-scroll" id="content-scroll">
       <div class="content-canvas">
         <form class="command-bar" id="form">
           <div class="command-inner">
-            <label class="sr-only" for="url">文章或平台网址、手机分享文本或待核验文字</label>
+            <label class="sr-only" for="url">粘贴链接或分享文本</label>
             <div class="field input-field">
               <i class="ui-icon" data-lucide="search" aria-hidden="true"></i>
               <input id="url" type="text" autocomplete="off" maxlength="10000"
-                placeholder="粘贴链接、分享文本，或直接输入需要核验的文字">
+                placeholder="粘贴链接、分享文本，或直接输入需要提取的文字">
               <button class="help-button tooltip" type="button" aria-label="支持的输入"
                 data-tooltip="支持直接输入文字，以及文章、快手、微博、小红书、视频号、抖音、B站和 YouTube 链接。">
                 <i data-lucide="circle-help" aria-hidden="true"></i>
@@ -66,6 +76,10 @@
                 <div class="eyebrow" id="platform"></div>
                 <h1 class="video-title" id="video-title"></h1>
                 <div class="meta" id="meta"></div>
+                <button class="copy-button" id="copy-content" type="button" aria-label="一键复制内容">
+                  <i data-lucide="copy" aria-hidden="true"></i>
+                  <span>一键复制</span>
+                </button>
               </aside>
 
               <article class="analysis">
@@ -74,10 +88,6 @@
                     <button class="result-tab active" id="tab-overview" type="button" role="tab"
                       aria-selected="true" aria-controls="view-overview" data-result-view="overview">
                       <i data-lucide="align-left" aria-hidden="true"></i><span>概览</span>
-                    </button>
-                    <button class="result-tab" id="tab-verification" type="button" role="tab"
-                      aria-selected="false" aria-controls="view-verification" data-result-view="verification">
-                      <i data-lucide="badge-check" aria-hidden="true"></i><span>信源核实</span>
                     </button>
                     <button class="result-tab" id="tab-structured" type="button" role="tab"
                       aria-selected="false" aria-controls="view-structured" data-result-view="structured">
@@ -120,29 +130,6 @@
                   </section>
                 </section>
 
-                <section class="result-view" id="view-verification" role="tabpanel"
-                  aria-labelledby="tab-verification" data-view-panel="verification" hidden>
-                  <section class="view-section trust-hero" id="trust-hero"></section>
-                  <section class="view-section">
-                    <div class="section-heading">
-                      <div>
-                        <i class="section-icon" data-lucide="list-checks" aria-hidden="true"></i>
-                        <h2>逐项核验</h2>
-                      </div>
-                    </div>
-                    <div class="claim-checks" id="claim-checks"></div>
-                  </section>
-                  <section class="view-section">
-                    <div class="section-heading">
-                      <div>
-                        <i class="section-icon" data-lucide="library" aria-hidden="true"></i>
-                        <h2>引用证据</h2>
-                      </div>
-                    </div>
-                    <div class="evidence-list" id="evidence-list"></div>
-                  </section>
-                </section>
-
                 <section class="result-view" id="view-structured" role="tabpanel"
                   aria-labelledby="tab-structured" data-view-panel="structured" hidden>
                   <section class="view-section">
@@ -152,7 +139,7 @@
                         <h2>结构化数据</h2>
                       </div>
                       <button class="help-button tooltip" type="button" aria-label="结构化数据说明"
-                        data-tooltip="供下游信源核实使用的严格 Schema 数据，只包含原子主张和隐性观点。">
+                        data-tooltip="从内容中提取的结构化信息，包含内容主题、原子主张和隐性观点。">
                         <i data-lucide="circle-help" aria-hidden="true"></i>
                       </button>
                     </div>
@@ -166,7 +153,6 @@
                       <pre class="json-output" id="json-output"></pre>
                     </details>
                   </section>
-
                 </section>
 
                 <section class="result-view" id="view-article" role="tabpanel"
@@ -176,6 +162,10 @@
                       <i class="section-icon" data-lucide="file-text" aria-hidden="true"></i>
                       <h2>完整全文</h2>
                     </div>
+                    <button class="copy-button-sm" id="copy-article" type="button" aria-label="复制全文">
+                      <i data-lucide="copy" aria-hidden="true"></i>
+                      <span>复制</span>
+                    </button>
                   </div>
                   <article class="cleaned-article" id="cleaned-article"></article>
                 </section>
@@ -230,15 +220,6 @@
                     </div>
                   <div class="keyframe-list" id="keyframes"></div>
                   </section>
-                  <section class="view-section">
-                    <div class="section-heading">
-                      <div>
-                        <i class="section-icon" data-lucide="waypoints" aria-hidden="true"></i>
-                        <h2>信源检索与审计</h2>
-                      </div>
-                    </div>
-                    <div class="trust-audit-body process-audit" id="trust-audit-body"></div>
-                  </section>
                 </section>
               </article>
             </div>
@@ -266,6 +247,6 @@
   </div>
 
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
-  <script src="/static/app.js?v=0.5.1"></script>
+  <script src="/static/app.js?v=1.0.0"></script>
 </body>
 </html>

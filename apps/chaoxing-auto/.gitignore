@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+auth_state.json
+node_modules/

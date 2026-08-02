@@ -1,9 +1,45 @@
+# Environment
 .env
 .venv/
+venv/
+ENV/
+
+# Python
 __pycache__/
-.pytest_cache/
-.cache/
-data/trust/
-*.egg-info/
+*.py[cod]
+*$py.class
 *.pyc
+*.pyo
+.pytest_cache/
+
+# Cache
+.cache/
+*.db
+*.sqlite
+
+# Auth & Cookies (sensitive)
+auth_state.json
 cookies*.txt
+*.cookies
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+dist/
+build/
+*.egg-info/
+
+# Node
+node_modules/
+
+# Logs
+*.log

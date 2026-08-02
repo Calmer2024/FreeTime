@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>超星刷课助手 - FreeTime</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --primary: #10b981;
+      --primary-dark: #059669;
+      --danger: #ef4444;
+      --bg: #0f172a;
+      --bg-card: #1e293b;
+      --text: #e2e8f0;
+      --text-secondary: #94a3b8;
+      --border: #334155;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    .app-header {
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .back-link {
+      color: var(--text-secondary);
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      transition: color 0.2s;
+    }
+
+    .back-link:hover {
+      color: var(--text);
+    }
+
+    .app-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .app-title h1 {
+      font-size: 20px;
+      font-weight: 600;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+
+    .card h2 {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+    }
+
+    .form-group input,
+    .form-group select {
+      width: 100%;
+      padding: 10px 14px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 14px;
+      transition: border-color 0.2s;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    .btn {
+      padding: 10px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: var(--primary-dark);
+    }
+
+    .btn-danger {
+      background: var(--danger);
+      color: white;
+    }
+
+    .btn-danger:hover {
+      background: #dc2626;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      background: var(--bg);
+      border-radius: 8px;
+      margin-bottom: 16px;
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--border);
+    }
+
+    .status-dot.running {
+      background: var(--primary);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .log-container {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      max-height: 400px;
+      overflow-y: auto;
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .log-line {
+      color: var(--text-secondary);
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      padding: 4px 0;
+    }
+
+    .log-line:last-child {
+      border-bottom: none;
+    }
+
+    .back-to-portal {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 14px;
+      margin-bottom: 20px;
+      transition: color 0.2s;
+    }
+
+    .back-to-portal:hover {
+      color: var(--text);
+    }
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <a href="/" class="back-link">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M19 12H5M12 19l-7-7 7-7"/>
+      </svg>
+      返回 FreeTime
+    </a>
+    <div class="app-title">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+        <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+      </svg>
+      <h1>超星刷课助手</h1>
+    </div>
+  </header>
+
+  <div class="container">
+    <!-- 状态卡片 -->
+    <div class="card">
+      <h2>📊 运行状态</h2>
+      <div class="status-bar">
+        <div class="status-dot" id="status-dot"></div>
+        <span id="status-text">未运行</span>
+      </div>
+      <div class="button-group">
+        <button class="btn btn-primary" id="start-btn" onclick="startTask()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="5 3 19 12 5 21 5 3"/>
+          </svg>
+          启动刷课
+        </button>
+        <button class="btn btn-danger" id="stop-btn" onclick="stopTask()" disabled>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="6" y="4" width="4" height="16"/>
+            <rect x="14" y="4" width="4" height="16"/>
+          </svg>
+          停止
+        </button>
+      </div>
+    </div>
+
+    <!-- 配置卡片 -->
+    <div class="card">
+      <h2>⚙️ 课程配置</h2>
+      <div class="form-group">
+        <label>课程链接或名称</label>
+        <input type="text" id="course-input" placeholder="粘贴课程链接或输入课程名称"
+               value="{{ config.course.url or config.course.name }}">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>播放倍速</label>
+          <select id="speed-select">
+            <option value="1" {% if config.playback.speed == 1 %}selected{% endif %}>1x</option>
+            <option value="1.5" {% if config.playback.speed == 1.5 %}selected{% endif %}>1.5x</option>
+            <option value="2" {% if config.playback.speed == 2 %}selected{% endif %}>2x</option>
+            <option value="3" {% if config.playback.speed == 3 %}selected{% endif %}>3x</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>轮询间隔 (秒)</label>
+          <input type="number" id="interval-input" min="1" max="30"
+                 value="{{ config.playback.poll_interval_seconds }}">
+        </div>
+      </div>
+      <div class="button-group">
+        <button class="btn btn-primary" onclick="saveConfig()">保存配置</button>
+      </div>
+    </div>
+
+    <!-- 日志卡片 -->
+    <div class="card">
+      <h2>📝 运行日志</h2>
+      <div class="log-container" id="log-container">
+        <div class="log-line">等待启动...</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let isRunning = false;
+    let pollTimer = null;
+
+    function startTask() {
+      fetch('/api/start', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+          if (data.status === 'ok') {
+            updateStatus(true);
+            startPolling();
+          } else {
+            alert(data.message || '启动失败');
+          }
+        })
+        .catch(err => alert('请求失败: ' + err.message));
+    }
+
+    function stopTask() {
+      fetch('/api/stop', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+          if (data.status === 'ok') {
+            updateStatus(false);
+            stopPolling();
+          } else {
+            alert(data.message || '停止失败');
+          }
+        })
+        .catch(err => alert('请求失败: ' + err.message));
+    }
+
+    function saveConfig() {
+      const courseInput = document.getElementById('course-input').value;
+      const isUrl = courseInput.startsWith('http');
+      const data = {
+        speed: parseFloat(document.getElementById('speed-select').value),
+        poll_interval: parseInt(document.getElementById('interval-input').value),
+      };
+      if (isUrl) {
+        data.course_url = courseInput;
+      } else {
+        data.course_name = courseInput;
+      }
+
+      fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      })
+      .then(r => r.json())
+      .then(() => alert('配置已保存'))
+      .catch(err => alert('保存失败: ' + err.message));
+    }
+
+    function updateStatus(running) {
+      isRunning = running;
+      const dot = document.getElementById('status-dot');
+      const text = document.getElementById('status-text');
+      const startBtn = document.getElementById('start-btn');
+      const stopBtn = document.getElementById('stop-btn');
+
+      if (running) {
+        dot.classList.add('running');
+        text.textContent = '运行中...';
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+      } else {
+        dot.classList.remove('running');
+        text.textContent = '未运行';
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+      }
+    }
+
+    function startPolling() {
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(fetchStatus, 2000);
+    }
+
+    function stopPolling() {
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    }
+
+    function fetchStatus() {
+      fetch('/api/status')
+        .then(r => r.json())
+        .then(data => {
+          updateStatus(data.is_running);
+          const container = document.getElementById('log-container');
+          container.innerHTML = data.log_lines.map(line =>
+            `<div class="log-line">${escapeHtml(line)}</div>`
+          ).join('');
+          container.scrollTop = container.scrollHeight;
+        })
+        .catch(() => {});
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // 初始状态检查
+    fetchStatus();
+  </script>
+</body>
+</html>

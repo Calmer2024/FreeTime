@@ -15,9 +15,9 @@ from app.models import (
     AnalyzeRequest,
     AnalyzeResponse,
     DeleteResponse,
+    StageTiming,
     StoredVideoList,
     StructuredInformation,
-    VerifyRequest,
 )
 from app.pipeline import (
     PipelineError,
@@ -28,12 +28,11 @@ from app.pipeline import (
 from app.content import analyze_article_url, analyze_upload_bundle
 from app.security import ALLOWED_HOST_SUFFIXES, UnsafeUrlError, resolve_content_input
 from app.thumbnails import thumbnail_store
-from app.trust.service import verify_structured_information
 
 
 app = FastAPI(
-    title="MiMo Trust Multimodal Source Verification",
-    version="0.5.0",
+    title="FreeTime Media Extractor",
+    version="1.0.0",
     docs_url="/api/docs",
 )
 cache = ResultCache(settings.cache_ttl_seconds)
@@ -67,6 +66,54 @@ async def _stabilize_payload_thumbnail(payload: dict[str, object]) -> None:
         original,
         str(metadata.get("webpage_url") or ""),
     )
+
+
+def _visible_extraction_milliseconds(result: AnalyzeResponse) -> int:
+    return sum(max(0, int(item.milliseconds)) for item in result.timings)
+
+
+def _finalize_request_timings(
+    result: AnalyzeResponse,
+    *,
+    full_milliseconds: int,
+    input_milliseconds: int,
+    thumbnail_milliseconds: int,
+) -> None:
+    visible_core = _visible_extraction_milliseconds(result)
+    full = max(0, int(full_milliseconds), visible_core)
+    remaining = full - visible_core
+    input_time = min(max(0, int(input_milliseconds)), remaining)
+    remaining -= input_time
+    thumbnail_time = min(max(0, int(thumbnail_milliseconds)), remaining)
+    remaining -= thumbnail_time
+    result.orchestration_timings = [
+        StageTiming(name="输入解析与安全展开", milliseconds=input_time),
+        StageTiming(name="封面获取与转存", milliseconds=thumbnail_time),
+        StageTiming(name="其他编排开销", milliseconds=remaining),
+    ]
+    result.full_pipeline_milliseconds = full
+
+
+def _ensure_request_timings(result: AnalyzeResponse) -> None:
+    if result.orchestration_timings:
+        return
+    historical_full = result.full_pipeline_milliseconds or result.extraction_milliseconds
+    _finalize_request_timings(
+        result,
+        full_milliseconds=historical_full,
+        input_milliseconds=0,
+        thumbnail_milliseconds=0,
+    )
+
+
+def _ensure_payload_request_timings(payload: dict[str, object]) -> None:
+    try:
+        result = AnalyzeResponse.model_validate(payload)
+    except Exception:
+        return
+    _ensure_request_timings(result)
+    payload.clear()
+    payload.update(result.model_dump(mode="json"))
 
 
 def _ensure_cleaned_article(payload: dict[str, object]) -> dict[str, object]:
@@ -130,6 +177,7 @@ async def thumbnail(key: str) -> FileResponse:
 @app.post("/api/analyze", response_model=AnalyzeResponse)
 async def analyze_content(request: AnalyzeRequest) -> AnalyzeResponse:
     request_started = time.perf_counter()
+    input_started = time.perf_counter()
     try:
         url = await asyncio.to_thread(
             resolve_content_input,
@@ -138,6 +186,7 @@ async def analyze_content(request: AnalyzeRequest) -> AnalyzeResponse:
         )
     except UnsafeUrlError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    input_milliseconds = round((time.perf_counter() - input_started) * 1000)
 
     cache_key = cache.key(f"{request.input_kind}:{url}", request.mode)
     if not request.refresh:
@@ -146,32 +195,14 @@ async def analyze_content(request: AnalyzeRequest) -> AnalyzeResponse:
             cached["cached"] = True
             _ensure_cleaned_article(cached)
             cached_result = AnalyzeResponse.model_validate(cached)
+            _ensure_request_timings(cached_result)
             thumbnail_changed = await _stabilize_result_thumbnail(cached_result)
-            if request.verify and not cached_result.verification:
-                try:
-                    cached_result.verification = await verify_structured_information(
-                        cached_result.structured_data
-                    )
-                    cache.set(cache_key, cached_result.model_dump(mode="json"))
-                except Exception as exc:
-                    cached_result.verification = {
-                        "status": "failed",
-                        "message": str(exc),
-                    }
             if not cached_result.extraction_milliseconds:
                 cached_result.extraction_milliseconds = sum(
                     item.milliseconds for item in cached_result.timings
                 )
-            verification_seconds = float(
-                ((cached_result.verification or {}).get("timings") or {}).get(
-                    "total_seconds", 0
-                )
-            )
             if not cached_result.full_pipeline_milliseconds:
-                cached_result.full_pipeline_milliseconds = (
-                    cached_result.extraction_milliseconds
-                    + round(verification_seconds * 1000)
-                )
+                cached_result.full_pipeline_milliseconds = cached_result.extraction_milliseconds
             if thumbnail_changed:
                 cache.set(cache_key, cached_result.model_dump(mode="json"))
             return cached_result
@@ -196,20 +227,19 @@ async def analyze_content(request: AnalyzeRequest) -> AnalyzeResponse:
     except PipelineError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    thumbnail_started = time.perf_counter()
     await _stabilize_result_thumbnail(result)
+    thumbnail_milliseconds = round(
+        (time.perf_counter() - thumbnail_started) * 1000
+    )
 
-    if request.verify:
-        try:
-            result.verification = await verify_structured_information(
-                result.structured_data
-            )
-        except Exception as exc:
-            result.verification = {
-                "status": "failed",
-                "message": str(exc),
-            }
-    result.full_pipeline_milliseconds = round(
-        (time.perf_counter() - request_started) * 1000
+    _finalize_request_timings(
+        result,
+        full_milliseconds=round(
+            (time.perf_counter() - request_started) * 1000
+        ),
+        input_milliseconds=input_milliseconds,
+        thumbnail_milliseconds=thumbnail_milliseconds,
     )
     cache.set(cache_key, result.model_dump(mode="json"))
     return result
@@ -217,10 +247,9 @@ async def analyze_content(request: AnalyzeRequest) -> AnalyzeResponse:
 
 @app.post("/api/analyze/upload", response_model=AnalyzeResponse)
 async def analyze_uploaded_content(
-    title: str = Form(default="多模态组合核验", max_length=200),
+    title: str = Form(default="多模态内容提取", max_length=200),
     text: str = Form(default="", max_length=50_000),
     files: list[UploadFile] = File(default=[]),
-    verify: bool = Form(default=True),
 ) -> AnalyzeResponse:
     request_started = time.perf_counter()
     try:
@@ -231,56 +260,20 @@ async def analyze_uploaded_content(
         raise HTTPException(
             status_code=422, detail=f"多模态材料解析失败：{exc}"
         ) from exc
+    thumbnail_started = time.perf_counter()
     await _stabilize_result_thumbnail(result)
-    if verify:
-        try:
-            result.verification = await verify_structured_information(
-                result.structured_data
-            )
-        except Exception as exc:
-            result.verification = {"status": "failed", "message": str(exc)}
-    result.full_pipeline_milliseconds = round(
-        (time.perf_counter() - request_started) * 1000
+    thumbnail_milliseconds = round(
+        (time.perf_counter() - thumbnail_started) * 1000
+    )
+    _finalize_request_timings(
+        result,
+        full_milliseconds=round(
+            (time.perf_counter() - request_started) * 1000
+        ),
+        input_milliseconds=0,
+        thumbnail_milliseconds=thumbnail_milliseconds,
     )
     return result
-
-
-@app.post("/api/verify")
-async def verify_claims(request: VerifyRequest) -> dict[str, object]:
-    try:
-        result = await verify_structured_information(request.structured_data)
-        if request.cache_key:
-            cached = cache.get(request.cache_key)
-            if not cached:
-                raise HTTPException(status_code=404, detail="缓存记录不存在或已过期")
-            cached_structured = StructuredInformation.model_validate(
-                cached.get("structured_data", {})
-            )
-            if cached_structured.case_id != request.structured_data.case_id:
-                raise HTTPException(status_code=409, detail="核验案例与缓存记录不匹配")
-            cached["verification"] = result
-            extraction_milliseconds = int(
-                cached.get("extraction_milliseconds")
-                or sum(
-                    int(item.get("milliseconds") or 0)
-                    for item in cached.get("timings", [])
-                    if isinstance(item, dict)
-                )
-            )
-            verification_milliseconds = round(
-                float((result.get("timings") or {}).get("total_seconds") or 0)
-                * 1000
-            )
-            cached["extraction_milliseconds"] = extraction_milliseconds
-            cached["full_pipeline_milliseconds"] = (
-                extraction_milliseconds + verification_milliseconds
-            )
-            cache.set(request.cache_key, cached)
-        return result
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/api/videos", response_model=StoredVideoList)
@@ -291,6 +284,7 @@ async def list_videos(limit: int = 100) -> StoredVideoList:
         result = item.get("result")
         if isinstance(result, dict):
             _ensure_cleaned_article(result)
+            _ensure_payload_request_timings(result)
     await asyncio.gather(*(
         _stabilize_payload_thumbnail(item["result"])
         for item in items

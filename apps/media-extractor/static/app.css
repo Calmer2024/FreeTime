@@ -631,6 +631,7 @@ details[open] .summary-chevron { transform: rotate(180deg); }
 .trace-item strong { display: block; margin-top: 5px; font: 550 12px/1.2 var(--font-mono); }
 .trace-item.trace-extraction { box-shadow: inset 2px 0 0 #a8adb4; }
 .trace-item.trace-verification { box-shadow: inset 2px 0 0 #748b78; }
+.trace-item.trace-orchestration { box-shadow: inset 2px 0 0 #a9825a; }
 .trace-item.trace-total { box-shadow: inset 2px 0 0 var(--ink); background: var(--action-soft); }
 .pipeline-summary {
   display: grid;
@@ -761,4 +762,128 @@ details[open] .summary-chevron { transform: rotate(180deg); }
     animation-iteration-count: 1 !important;
     transition-duration: .01ms !important;
   }
+}
+
+/* FreeTime App Header */
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-secondary);
+  text-decoration: none;
+  font-size: 13px;
+  transition: color 0.2s;
+}
+
+.back-link:hover {
+  color: var(--ink);
+}
+
+.app-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.app-title h1 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.app-title svg {
+  color: #f43f5e;
+}
+
+/* Copy Button Styles */
+.copy-button,
+.copy-button-sm {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.copy-button:hover,
+.copy-button-sm:hover {
+  background: var(--surface-muted);
+  border-color: var(--ink-tertiary);
+}
+
+.copy-button.copied,
+.copy-button-sm.copied {
+  background: #10b981;
+  border-color: #10b981;
+  color: white;
+}
+
+.copy-button {
+  width: 100%;
+  justify-content: center;
+  margin-top: 16px;
+}
+
+.copy-button-sm {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.copy-button svg,
+.copy-button-sm svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Media section adjustments */
+.media {
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+}
+
+/* Remove verification-related styles that are no longer needed */
+.trust-hero,
+.trust-verdict,
+.trust-empty-state,
+.trust-kicker,
+.verdict-mark,
+.verdict-positive,
+.verdict-negative,
+.verdict-mixed,
+.verdict-pending,
+.claim-checks,
+.claim-card,
+.claim-card-head,
+.claim-id,
+.claim-category,
+.claim-verdict,
+.claim-sources,
+.claim-no-source,
+.evidence-list,
+.evidence-card,
+.evidence-meta,
+.audit-metrics,
+.audit-block,
+.audit-foot,
+.trust-audit-body,
+.process-audit,
+.source-link {
+  /* These styles are kept for backward compatibility but won't be used */
 }
