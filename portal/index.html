@@ -15,9 +15,13 @@
   <div class="portal">
     <!-- 背景装饰 -->
     <div class="bg-decoration">
+      <!-- 光点粒子 -->
+      <div class="particles" id="particles"></div>
+      <!-- 渐变光球 -->
       <div class="gradient-orb orb-1"></div>
       <div class="gradient-orb orb-2"></div>
       <div class="gradient-orb orb-3"></div>
+      <div class="gradient-orb orb-4"></div>
     </div>
 
     <!-- 主内容 -->
@@ -102,5 +106,56 @@
       </footer>
     </main>
   </div>
+
+  <script>
+    // 光点粒子动画
+    function createParticles() {
+      const container = document.getElementById('particles');
+      const particleCount = 30;
+      const colors = [
+        'rgba(99, 102, 241, 0.6)',   // 紫色
+        'rgba(139, 92, 246, 0.5)',   // 深紫
+        'rgba(236, 72, 153, 0.5)',   // 粉色
+        'rgba(16, 185, 129, 0.4)',   // 绿色
+        'rgba(245, 158, 11, 0.4)',   // 金色
+        'rgba(255, 255, 255, 0.3)',  // 白色
+      ];
+
+      for (let i = 0; i < particleCount; i++) {
+        const particle = document.createElement('div');
+        particle.className = 'particle';
+
+        // 随机大小 (2-6px)
+        const size = Math.random() * 4 + 2;
+
+        // 随机位置
+        const left = Math.random() * 100;
+
+        // 随机动画时长 (15-35秒)
+        const duration = Math.random() * 20 + 15;
+
+        // 随机延迟
+        const delay = Math.random() * 20;
+
+        // 随机颜色
+        const color = colors[Math.floor(Math.random() * colors.length)];
+
+        particle.style.cssText = `
+          width: ${size}px;
+          height: ${size}px;
+          left: ${left}%;
+          background: ${color};
+          box-shadow: 0 0 ${size * 2}px ${color};
+          animation-duration: ${duration}s;
+          animation-delay: -${delay}s;
+        `;
+
+        container.appendChild(particle);
+      }
+    }
+
+    // 页面加载时创建粒子
+    document.addEventListener('DOMContentLoaded', createParticles);
+  </script>
 </body>
 </html>
