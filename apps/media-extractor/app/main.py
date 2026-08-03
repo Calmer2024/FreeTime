@@ -288,7 +288,6 @@ async def chaoxing_index() -> HTMLResponse:
       padding: 10px 20px;
       background: rgba(255, 255, 255, 0.85);
       backdrop-filter: saturate(180%) blur(20px);
-      border-bottom: 0.5px solid var(--line);
     }}
     .cx-back {{
       display: inline-flex;

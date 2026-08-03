@@ -771,7 +771,6 @@ details[open] .summary-chevron { transform: rotate(180deg); }
   gap: 16px;
   padding: 12px 24px;
   background: var(--surface);
-  border-bottom: 1px solid var(--line);
 }
 
 .back-link {
