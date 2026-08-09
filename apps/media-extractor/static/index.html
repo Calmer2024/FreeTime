@@ -6,7 +6,7 @@
   <meta name="description" content="DrillKnowledge - 深度知识提取工具">
   <title>DrillKnowledge - FreeTime</title>
   <link rel="icon" type="image/png" href="/static/icon_freetime.png">
-  <link rel="stylesheet" href="/extractor-static/app.css?v=1.0.0">
+  <link rel="stylesheet" href="/extractor-static/app.css?v=1.0.15">
   <style>
     /* 重置原生浏览器样式 */
     input, select, button, textarea {
@@ -111,6 +111,12 @@
       justify-content: center;
     }
 
+    .dk-task-control {
+      position: absolute;
+      right: 24px;
+      z-index: 220;
+    }
+
     /* 内容区域 - 填充剩余空间，内部滚动 */
     .dk-content {
       flex: 1;
@@ -153,43 +159,50 @@
 
     .result {
       flex: 1;
-      overflow-y: auto;
+      min-height: 0;
+      height: 100%;
       padding: 0;
     }
 
-    /* 自定义滚动条 - 内部 */
-    .dk-content-inner::-webkit-scrollbar,
-    .result::-webkit-scrollbar {
-      width: 5px;
+    .result.active {
+      display: flex;
+      flex-direction: column;
     }
 
-    .dk-content-inner::-webkit-scrollbar-track,
-    .result::-webkit-scrollbar-track {
+    /* 自定义滚动条 - 内部 */
+    .dk-content-inner::-webkit-scrollbar {
+      width: 7px;
+      height: 7px;
+    }
+
+    .dk-content-inner::-webkit-scrollbar-track {
       background: transparent;
     }
 
-    .dk-content-inner::-webkit-scrollbar-thumb,
-    .result::-webkit-scrollbar-thumb {
-      background: rgba(0, 0, 0, 0.1);
-      border-radius: 3px;
+    .dk-content-inner::-webkit-scrollbar-thumb {
+      min-height: 44px;
+      border: 3px solid transparent;
+      border-radius: 999px;
+      background: var(--scrollbar-thumb);
+      background-clip: content-box;
     }
 
-    .dk-content-inner::-webkit-scrollbar-thumb:hover,
-    .result::-webkit-scrollbar-thumb:hover {
-      background: rgba(0, 0, 0, 0.18);
+    .dk-content-inner::-webkit-scrollbar-thumb:hover {
+      background-color: var(--scrollbar-thumb-hover);
     }
 
     /* Firefox 滚动条 */
-    .dk-content-inner,
-    .result {
+    .dk-content-inner {
       scrollbar-width: thin;
-      scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
+      scrollbar-color: var(--scrollbar-thumb) transparent;
     }
 
     /* 结果网格布局 - 左侧固定，右侧滚动 */
     .result-grid {
       display: flex;
       height: 100%;
+      min-height: 0;
+      flex: 1;
     }
 
     .result-grid .media {
@@ -198,11 +211,12 @@
       overflow-y: auto;
       border-right: 1px solid var(--line);
       scrollbar-width: thin;
-      scrollbar-color: rgba(0, 0, 0, 0.06) transparent;
+      scrollbar-color: var(--scrollbar-thumb) transparent;
     }
 
     .result-grid .media::-webkit-scrollbar {
-      width: 3px;
+      width: 7px;
+      height: 7px;
     }
 
     .result-grid .media::-webkit-scrollbar-track {
@@ -210,16 +224,20 @@
     }
 
     .result-grid .media::-webkit-scrollbar-thumb {
-      background: rgba(0, 0, 0, 0.06);
-      border-radius: 2px;
+      min-height: 48px;
+      border: 2px solid transparent;
+      border-radius: 999px;
+      background: var(--scrollbar-thumb);
+      background-clip: content-box;
     }
 
     .result-grid .media::-webkit-scrollbar-thumb:hover {
-      background: rgba(0, 0, 0, 0.12);
+      background-color: var(--scrollbar-thumb-hover);
     }
 
     .result-grid .analysis {
       flex: 1;
+      min-height: 0;
       display: flex;
       flex-direction: column;
       overflow: hidden;
@@ -231,65 +249,25 @@
     }
 
     .result-grid .analysis .result-view {
+      padding-right: 8px;
       flex: 1;
-      overflow: hidden;
-      padding-right: 0;
-      display: flex;
-      flex-direction: column;
-    }
-
-    .result-view > section,
-    .result-view > div {
-      flex: 1;
+      min-height: 0;
       overflow-y: auto;
-    }
-
-    /* 内容区域内部滚动条 - 极简样式 */
-    .result-view::-webkit-scrollbar,
-    .cleaned-article::-webkit-scrollbar,
-    .dk-content-inner::-webkit-scrollbar {
-      width: 4px;
-    }
-
-    .result-view::-webkit-scrollbar-track,
-    .cleaned-article::-webkit-scrollbar-track,
-    .dk-content-inner::-webkit-scrollbar-track {
-      background: transparent;
-    }
-
-    .result-view::-webkit-scrollbar-thumb,
-    .cleaned-article::-webkit-scrollbar-thumb,
-    .dk-content-inner::-webkit-scrollbar-thumb {
-      background: rgba(0, 0, 0, 0.08);
-      border-radius: 2px;
-    }
-
-    .result-view::-webkit-scrollbar-thumb:hover,
-    .cleaned-article::-webkit-scrollbar-thumb:hover,
-    .dk-content-inner::-webkit-scrollbar-thumb:hover {
-      background: rgba(0, 0, 0, 0.15);
-    }
-
-    .result-view,
-    .cleaned-article,
-    .dk-content-inner {
       scrollbar-width: thin;
-      scrollbar-color: rgba(0, 0, 0, 0.08) transparent;
+      scrollbar-color: var(--scrollbar-thumb) transparent;
     }
 
-    /* 正文内容固定高度 - 无外部滚动条 */
-    .view-article {
-      overflow: hidden;
-      height: 100%;
-    }
-
-    .view-article .section-heading {
-      flex-shrink: 0;
+    .result-grid .analysis .result-view::-webkit-scrollbar { width: 7px; }
+    .result-grid .analysis .result-view::-webkit-scrollbar-track { background: transparent; }
+    .result-grid .analysis .result-view::-webkit-scrollbar-thumb {
+      min-height: 48px;
+      border: 2px solid transparent;
+      border-radius: 999px;
+      background: var(--scrollbar-thumb);
+      background-clip: content-box;
     }
 
     .cleaned-article {
-      height: calc(100% - 50px);
-      overflow-y: auto;
       padding: 16px;
       background: var(--surface-muted);
       border-radius: var(--radius-sm);
@@ -387,23 +365,69 @@
       outline: none;
     }
 
-    /* 响应式 */
-    @media (max-width: 768px) {
+    /* 窄桌面：导航和搜索分行，避免在最小窗口发生遮挡。 */
+    @media (max-width: 1240px) {
+      .dk-header-inner {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 8px;
+        padding: 10px 16px;
+      }
+
+      .dk-nav {
+        position: static;
+        min-width: 0;
+      }
+
       .dk-logo-text {
         display: none;
       }
 
-      .dk-nav {
-        left: 16px;
+      .dk-search-container {
+        width: 100%;
       }
 
-      .dk-header-inner {
-        padding: 10px 16px;
+      .dk-task-control {
+        top: 10px;
+        right: 16px;
       }
 
       .dk-content-inner {
-        padding: 20px 16px;
+        height: auto;
+        min-height: 100%;
+        padding: 14px 12px 24px;
       }
+
+      .panel.workbench,
+      .result,
+      .result-grid,
+      .result-grid .analysis {
+        height: auto;
+        overflow: visible;
+      }
+
+      .panel.workbench { flex: 0 0 auto; }
+      .result-grid { flex-direction: column; }
+      .result-grid .media {
+        width: 100%;
+        max-height: none;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+    }
+
+    @media (max-height: 620px) and (min-width: 1241px) {
+      .dk-header-inner { padding-top: 8px; padding-bottom: 8px; }
+      .dk-content-inner { padding-top: 12px; padding-bottom: 12px; gap: 12px; }
+      .result-grid .media { width: 240px; padding: 18px; }
+      .result-grid .analysis { padding: 20px 22px 24px; }
+      .result-navigation { margin-bottom: 16px; }
+    }
+
+    @media (min-width: 1800px) and (min-height: 900px) {
+      .dk-content-inner { max-width: 1440px; }
+      .dk-search-container .command-bar { max-width: 820px !important; }
+      .result-grid .media { width: 340px; }
     }
   </style>
 </head>
@@ -434,7 +458,7 @@
               <div class="field input-field">
                 <i class="ui-icon" data-lucide="search" aria-hidden="true"></i>
                 <input id="url" type="text" autocomplete="off" maxlength="10000"
-                  placeholder="粘贴链接、分享文本，或直接输入需要提取的文字">
+                  placeholder="粘贴链接；可连续提交多个任务">
                 <button class="help-button tooltip" type="button" aria-label="支持的输入"
                   data-tooltip="支持直接输入文字，以及文章、快手、微博、小红书、视频号、抖音、B站和 YouTube 链接。">
                   <i data-lucide="circle-help" aria-hidden="true"></i>
@@ -460,6 +484,20 @@
               </button>
             </div>
           </form>
+        </div>
+        <div class="dk-task-control" id="task-queue-control" hidden>
+          <button class="task-queue-trigger" id="toggle-task-queue" type="button"
+            aria-label="展开并行任务" title="展开并行任务" aria-expanded="false"
+            aria-controls="task-queue">
+            <i data-lucide="list-checks" aria-hidden="true"></i>
+            <span class="task-active-badge" id="task-active-badge" hidden></span>
+          </button>
+          <section class="task-queue" id="task-queue" aria-label="并行任务" hidden>
+            <div class="task-queue-heading">
+              <div><strong>并行任务</strong><span class="task-queue-summary" id="task-queue-summary"></span></div>
+            </div>
+            <div class="task-list" id="task-list"></div>
+          </section>
         </div>
       </div>
     </header>
@@ -493,6 +531,11 @@
                   <span>暂无可用封面</span>
                 </div>
               </div>
+              <button class="download-button" id="download-thumbnail" type="button" aria-label="下载封面图片" hidden>
+                <i data-lucide="download" aria-hidden="true"></i>
+                <span>下载封面</span>
+              </button>
+              <div class="media-gallery" id="media-gallery" hidden></div>
               <div class="eyebrow" id="platform"></div>
               <h1 class="video-title" id="video-title"></h1>
               <div class="meta" id="meta"></div>
@@ -509,13 +552,13 @@
                     aria-selected="true" aria-controls="view-overview" data-result-view="overview">
                     <i data-lucide="align-left" aria-hidden="true"></i><span>概览</span>
                   </button>
-                  <button class="result-tab" id="tab-structured" type="button" role="tab"
-                    aria-selected="false" aria-controls="view-structured" data-result-view="structured">
-                    <i data-lucide="braces" aria-hidden="true"></i><span>结构化数据</span>
-                  </button>
                   <button class="result-tab" id="tab-article" type="button" role="tab"
                     aria-selected="false" aria-controls="view-article" data-result-view="article">
                     <i data-lucide="file-text" aria-hidden="true"></i><span>完整全文</span>
+                  </button>
+                  <button class="result-tab" id="tab-resources" type="button" role="tab"
+                    aria-selected="false" aria-controls="view-resources" data-result-view="resources" hidden>
+                    <i data-lucide="images" aria-hidden="true"></i><span>资源</span>
                   </button>
                   <button class="result-tab" id="tab-process" type="button" role="tab"
                     aria-selected="false" aria-controls="view-process" data-result-view="process">
@@ -548,46 +591,62 @@
                   <div class="points" id="points"></div>
                   <div class="topics" id="topics"></div>
                 </section>
-              </section>
-
-              <section class="result-view" id="view-structured" role="tabpanel"
-                aria-labelledby="tab-structured" data-view-panel="structured" hidden>
-                <section class="view-section">
-                  <div class="section-heading">
-                    <div>
-                      <i class="section-icon" data-lucide="braces" aria-hidden="true"></i>
-                      <h2>结构化数据</h2>
-                    </div>
-                    <button class="help-button tooltip" type="button" aria-label="结构化数据说明"
-                      data-tooltip="从内容中提取的结构化信息，包含内容主题、原子主张和隐性观点。">
-                      <i data-lucide="circle-help" aria-hidden="true"></i>
-                    </button>
-                  </div>
-                  <div class="structured-output" id="structured-output"></div>
-                  <details>
-                    <summary>
-                      <i class="disclosure-icon" data-lucide="code-2" aria-hidden="true"></i>
-                      <span>标准 JSON</span>
-                      <i class="summary-chevron" data-lucide="chevron-down" aria-hidden="true"></i>
-                    </summary>
-                    <pre class="json-output" id="json-output"></pre>
-                  </details>
+                <section class="view-section" id="resources-section" hidden>
+                  <div class="section-heading"><div><i class="section-icon" data-lucide="link-2" aria-hidden="true"></i><h2>相关资源</h2></div></div>
+                  <div class="resource-list" id="resources-list"></div>
+                </section>
+                <section class="view-section" id="opinion-section" hidden>
+                  <div class="section-heading"><div><i class="section-icon" data-lucide="shield-check" aria-hidden="true"></i><h2>观点判断</h2></div></div>
+                  <div class="opinion-assessment" id="opinion-assessment"></div>
                 </section>
               </section>
 
               <section class="result-view" id="view-article" role="tabpanel"
                 aria-labelledby="tab-article" data-view-panel="article" hidden>
-                <div class="section-heading">
+                <div class="section-heading article-column-heading">
                   <div>
                     <i class="section-icon" data-lucide="file-text" aria-hidden="true"></i>
-                    <h2>完整全文</h2>
+                    <div class="article-column-tabs" role="tablist" aria-label="全文内容栏目">
+                      <button class="article-column-tab active" id="article-tab-polished" type="button" role="tab"
+                        aria-selected="true" aria-controls="article-pane-polished" data-article-view="polished">完整全文</button>
+                      <button class="article-column-tab" id="article-tab-source" type="button" role="tab"
+                        aria-selected="false" aria-controls="article-pane-source" data-article-view="source">提取原文</button>
+                    </div>
                   </div>
-                  <button class="copy-button-sm" id="copy-article" type="button" aria-label="复制全文">
-                    <i data-lucide="copy" aria-hidden="true"></i>
-                    <span>复制</span>
-                  </button>
+                  <div class="article-actions">
+                    <span class="download-status" id="article-download-status" aria-live="polite" hidden></span>
+                    <button class="copy-button-sm" id="export-article-md" type="button" aria-label="导出完整全文 Markdown 文件">
+                      <i data-lucide="download" aria-hidden="true"></i>
+                      <span>导出 .md</span>
+                    </button>
+                    <button class="copy-button-sm" id="copy-article" type="button" aria-label="复制当前全文栏目">
+                      <i data-lucide="copy" aria-hidden="true"></i>
+                      <span>复制</span>
+                    </button>
+                  </div>
                 </div>
-                <article class="cleaned-article" id="cleaned-article"></article>
+                <div class="article-column-pane active" id="article-pane-polished" role="tabpanel"
+                  aria-labelledby="article-tab-polished" data-article-panel="polished">
+                  <article class="cleaned-article" id="cleaned-article"></article>
+                </div>
+                <div class="article-column-pane" id="article-pane-source" role="tabpanel"
+                  aria-labelledby="article-tab-source" data-article-panel="source" hidden>
+                  <article class="raw-source-article" id="raw-source-text"></article>
+                </div>
+              </section>
+
+              <section class="result-view" id="view-resources" role="tabpanel"
+                aria-labelledby="tab-resources" data-view-panel="resources" hidden>
+                <div class="section-heading">
+                  <div><i class="section-icon" data-lucide="images" aria-hidden="true"></i><h2>图片资源</h2></div>
+                  <div class="resource-actions">
+                    <span class="download-status" id="download-status" aria-live="polite" hidden></span>
+                    <button class="resource-action-button" id="download-all-resources" type="button"><i data-lucide="download" aria-hidden="true"></i><span>一键下载</span></button>
+                    <button class="icon-button" id="download-settings-button" type="button" aria-label="下载目录设置" title="下载目录设置"><i data-lucide="folder-cog" aria-hidden="true"></i></button>
+                  </div>
+                </div>
+                <p class="resource-view-note" id="resource-view-note"></p>
+                <div class="resource-gallery" id="resource-gallery"></div>
               </section>
 
               <section class="result-view" id="view-process" role="tabpanel"
@@ -601,16 +660,6 @@
                   </div>
                   <div class="pipeline-summary" id="full-pipeline-summary"></div>
                   <div class="trace process-trace" id="process-trace"></div>
-                </section>
-                <section class="view-section">
-                  <div class="section-heading">
-                    <div>
-                      <i class="section-icon" data-lucide="braces" aria-hidden="true"></i>
-                      <h2>LLM 结构化输入（完整）</h2>
-                    </div>
-                  </div>
-                  <p class="structured-input-meta" id="llm-structured-input-meta"></p>
-                  <pre class="structured-input" id="llm-structured-input"></pre>
                 </section>
                 <section class="view-section">
                   <div class="section-heading">
@@ -654,10 +703,10 @@
           <div class="section-heading">
             <div><i class="section-icon" data-lucide="history" aria-hidden="true"></i><h2>最近提取</h2></div>
           </div>
-          <button class="icon-button danger-quiet tooltip" id="clear-history" type="button"
-            aria-label="清空全部缓存" data-tooltip="清空全部缓存">
-            <i data-lucide="trash-2" aria-hidden="true"></i>
-          </button>
+          <div class="history-actions-head">
+            <button class="icon-button history-toggle" id="toggle-history" type="button" aria-label="折叠最近提取" title="折叠最近提取"><i data-lucide="chevron-up" aria-hidden="true"></i></button>
+            <button class="icon-button danger-quiet tooltip" id="clear-history" type="button" aria-label="清空全部缓存" data-tooltip="清空全部缓存"><i data-lucide="trash-2" aria-hidden="true"></i></button>
+          </div>
         </div>
         <div class="history-list" id="history-list">
           <div class="history-empty">正在读取记录</div>
@@ -667,8 +716,18 @@
     </main>
   </div>
 
+  <div class="app-modal" id="download-settings-modal" hidden>
+    <div class="app-modal-backdrop" data-close-download-settings></div>
+    <section class="app-modal-card" role="dialog" aria-modal="true" aria-labelledby="download-settings-title">
+      <div class="app-modal-header"><div><i data-lucide="folder-cog" aria-hidden="true"></i><h2 id="download-settings-title">下载目录</h2></div><button class="icon-button" type="button" data-close-download-settings aria-label="关闭"><i data-lucide="x" aria-hidden="true"></i></button></div>
+      <div class="app-modal-body"><label for="download-directory">资源将直接保存到此目录</label><input id="download-directory" type="text" autocomplete="off"></div>
+      <div class="app-modal-footer"><button class="secondary-button" id="open-download-folder" type="button"><i data-lucide="folder-open" aria-hidden="true"></i>打开目录</button><button class="primary-text-button" id="save-download-settings" type="button"><i data-lucide="check" aria-hidden="true"></i>保存</button></div>
+    </section>
+  </div>
+
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
-  <script src="/extractor-static/app.js?v=1.0.0"></script>
+  <script src="/extractor-static/task-ui.js?v=1.0.15"></script>
+  <script src="/extractor-static/app.js?v=1.0.15"></script>
   <script>
     // 自定义下拉框 - 模式选择
     const modeDropdown = document.getElementById('modeDropdown');
