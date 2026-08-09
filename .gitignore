@@ -41,5 +41,15 @@ build/
 # Node
 node_modules/
 
+# Desktop build artifacts
+desktop/dist/
+desktop/resources/
+desktop/build/
+desktop/node_modules/
+desktop/*.spec
+desktop/.port
+desktop/release/
+desktop/release2/
+
 # Logs
 *.log

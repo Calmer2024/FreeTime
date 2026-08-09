@@ -104,6 +104,44 @@ python -m http.server 8080
 
 3. 启动具体应用（见各应用目录的 README）
 
+## 桌面版（可安装程序）
+
+FreeTime 支持打包为 Windows 可安装桌面程序。
+
+### 开发模式
+
+```bash
+# 1. 安装 Python 依赖
+pip install -r apps/media-extractor/requirements.txt
+
+# 2. 启动 Python 后端
+cd apps/media-extractor
+uvicorn app.main:app --port 8000
+
+# 3. 另开终端，启动 Electron 窗口
+cd desktop
+npm install
+npm start
+```
+
+### 构建安装包
+
+```bash
+# 一键构建（Windows）
+cd desktop
+build.bat
+```
+
+或手动构建：
+
+```bash
+cd desktop
+pip install pyinstaller
+python build.py
+```
+
+构建产物位于 `desktop/dist/FreeTime-Setup.exe`。
+
 ## 许可证
 
 MIT License
