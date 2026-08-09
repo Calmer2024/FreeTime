@@ -26,7 +26,6 @@
 
     <!-- 设置弹窗 -->
     <div class="settings-modal" id="settingsModal">
-      <div class="settings-overlay" id="settingsOverlay"></div>
       <div class="settings-content">
         <div class="settings-header">
           <span class="settings-label">API 配置</span>
@@ -124,6 +123,7 @@
         </div>
 
         <div class="settings-footer">
+          <span class="settings-inline-status" id="configStatus" aria-live="polite"></span>
           <button class="settings-save-btn" id="settingsSave">保存配置</button>
           <button class="settings-cancel-btn" id="settingsCancel">取消</button>
         </div>
@@ -275,23 +275,26 @@
     // ========== 设置功能 ==========
     const settingsBtn = document.getElementById('settingsBtn');
     const settingsModal = document.getElementById('settingsModal');
-    const settingsOverlay = document.getElementById('settingsOverlay');
     const settingsClose = document.getElementById('settingsClose');
     const settingsCancel = document.getElementById('settingsCancel');
     const settingsSave = document.getElementById('settingsSave');
     const configStatus = document.getElementById('configStatus');
 
-    // 打开设置
+    // API 配置使用模态弹窗，适合集中编辑敏感配置
     settingsBtn.addEventListener('click', () => {
-      loadSettings();
-      settingsModal.classList.add('active');
+      const opening = !settingsModal.classList.contains('active');
+      if (opening) loadSettings();
+      settingsModal.classList.toggle('active', opening);
+      settingsBtn.classList.toggle('active', opening);
+      settingsBtn.setAttribute('aria-expanded', String(opening));
     });
 
     // 关闭设置
     function closeSettings() {
       settingsModal.classList.remove('active');
+      settingsBtn.classList.remove('active');
+      settingsBtn.setAttribute('aria-expanded', 'false');
     }
-    settingsOverlay.addEventListener('click', closeSettings);
     settingsClose.addEventListener('click', closeSettings);
     settingsCancel.addEventListener('click', closeSettings);
 
@@ -414,13 +417,18 @@
 
         if (response.ok) {
           localStorage.setItem('freetime_api_config', JSON.stringify(config));
-          closeSettings();
+          configStatus.textContent = '已保存';
+          configStatus.className = 'settings-inline-status success';
+          settingsSave.textContent = '已保存';
+          setTimeout(() => { settingsSave.textContent = '保存配置'; }, 1600);
         } else {
-          alert('保存失败，请重试');
+          configStatus.textContent = '保存失败，请重试';
+          configStatus.className = 'settings-inline-status error';
         }
       } catch (error) {
         localStorage.setItem('freetime_api_config', JSON.stringify(config));
-        closeSettings();
+        configStatus.textContent = '已保存到本地';
+        configStatus.className = 'settings-inline-status success';
       }
     });
 
@@ -430,7 +438,7 @@
       return saved ? JSON.parse(saved) : {};
     }
 
-    // ESC 键关闭弹窗
+    // ESC 键收起原地设置
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && settingsModal.classList.contains('active')) {
         closeSettings();
