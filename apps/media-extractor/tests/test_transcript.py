@@ -322,6 +322,7 @@ def test_cache_purges_payloads_from_previous_protocol(
 
     assert reloaded.get("legacy") is None
     assert reloaded.get("current") is not None
+    assert [row["cache_key"] for row in reloaded.list()] == ["current"]
 
 
 def test_reading_recovery_does_not_reuse_v5_cache_key(monkeypatch) -> None:

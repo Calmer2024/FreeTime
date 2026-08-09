@@ -47,11 +47,28 @@ class ResultCache:
                 "SELECT created_at, payload FROM summaries WHERE cache_key = ?",
                 (cache_key,),
             ).fetchone()
-        if not row:
+            if not row:
+                return None
+            if int(time.time()) - row[0] > self.ttl_seconds:
+                return None
+            payload = self._current_payload(row[1])
+            if payload is None:
+                connection.execute(
+                    "DELETE FROM summaries WHERE cache_key = ?", (cache_key,)
+                )
+            return payload
+
+    @classmethod
+    def _current_payload(cls, raw_payload: str) -> dict[str, Any] | None:
+        try:
+            payload = json.loads(raw_payload)
+        except (json.JSONDecodeError, TypeError):
             return None
-        if int(time.time()) - row[0] > self.ttl_seconds:
+        if not isinstance(payload, dict):
             return None
-        return json.loads(row[1])
+        if payload.get("protocol_version") != cls.SCHEMA_VERSION:
+            return None
+        return payload
 
     def list(self, limit: int = 100) -> list[dict[str, Any]]:
         with self._connect() as connection:
@@ -64,16 +81,28 @@ class ResultCache:
                 """,
                 (limit,),
             ).fetchall()
-        now = int(time.time())
-        return [
-            {
-                "cache_key": cache_key,
-                "created_at": datetime.fromtimestamp(created_at).isoformat(),
-                "expired": now - created_at > self.ttl_seconds,
-                "result": json.loads(payload),
-            }
-            for cache_key, created_at, payload in rows
-        ]
+            now = int(time.time())
+            results: list[dict[str, Any]] = []
+            stale_keys: list[str] = []
+            for cache_key, created_at, raw_payload in rows:
+                payload = self._current_payload(raw_payload)
+                if payload is None:
+                    stale_keys.append(cache_key)
+                    continue
+                results.append(
+                    {
+                        "cache_key": cache_key,
+                        "created_at": datetime.fromtimestamp(created_at).isoformat(),
+                        "expired": now - created_at > self.ttl_seconds,
+                        "result": payload,
+                    }
+                )
+            if stale_keys:
+                connection.executemany(
+                    "DELETE FROM summaries WHERE cache_key = ?",
+                    ((cache_key,) for cache_key in stale_keys),
+                )
+            return results
 
     def delete(self, cache_key: str) -> int:
         with self._connect() as connection:

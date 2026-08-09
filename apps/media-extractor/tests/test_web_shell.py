@@ -8,12 +8,19 @@ from app.main import app
 
 
 def test_index_prevents_stale_frontend_bundle() -> None:
-    response = TestClient(app).get("/")
+    client = TestClient(app)
+    response = client.get("/")
 
     assert response.status_code == 200
     assert response.headers["cache-control"] == "no-store"
-    assert "/static/app.css?v=" in response.text
-    assert "/static/app.js?v=" in response.text
+    assert "/portal/style.css" in response.text
+
+    extractor = client.get("/extractor")
+    assert extractor.status_code == 200
+    assert extractor.headers["cache-control"] == "no-store"
+    assert "/extractor-static/app.css?v=" in extractor.text
+    assert "/extractor-static/app.js?v=" in extractor.text
+    assert "/extractor-static/task-ui.js?v=" in extractor.text
 
 
 def test_completed_verification_is_part_of_video_response(monkeypatch) -> None:
@@ -62,15 +69,13 @@ def test_completed_verification_is_part_of_video_response(monkeypatch) -> None:
 
 
 def test_full_pipeline_details_have_one_unified_process_view() -> None:
-    html = Path("app/static/index.html").read_text(encoding="utf-8")
-    script = Path("app/static/app.js").read_text(encoding="utf-8")
+    html = Path("static/index.html").read_text(encoding="utf-8")
+    script = Path("static/app.js").read_text(encoding="utf-8")
 
     assert 'id="full-pipeline-summary"' in html
-    assert 'id="trust-audit-body"' in html
-    assert html.index('id="trust-audit-body"') > html.index('id="view-process"')
-    assert 'id="llm-structured-input"' in html
+    assert 'id="process-trace"' in html
+    assert html.index('id="process-trace"') > html.index('id="view-process"')
     assert "fullPipelineMilliseconds" in script
-    assert "verificationTraceItems" in script
     assert "orchestrationTraceItems" in script
     assert "输入解析与安全展开" in script
     assert "封面获取与转存" in script
@@ -79,24 +84,24 @@ def test_full_pipeline_details_have_one_unified_process_view() -> None:
     assert 'id="thumbnail-placeholder"' in html
     assert "showThumbnail" in script
     assert "thumbnail.onerror" in script
-    css = Path("app/static/app.css").read_text(encoding="utf-8")
+    css = Path("static/app.css").read_text(encoding="utf-8")
     assert "object-fit: contain" in css
     assert "filter: saturate" not in css
 
 
 def test_web_shell_uses_one_input_for_links_and_text() -> None:
-    html = Path("app/static/index.html").read_text(encoding="utf-8")
-    script = Path("app/static/app.js").read_text(encoding="utf-8")
+    html = Path("static/index.html").read_text(encoding="utf-8")
+    script = Path("static/app.js").read_text(encoding="utf-8")
 
     assert 'id="url" type="text"' in html
     assert 'autocomplete="off"' in html
-    assert "直接输入需要核验的文字" in html
+    assert "支持直接输入文字" in html
     assert 'id="upload-fields"' not in html
     assert 'id="upload-files"' not in html
     assert 'id="upload-title"' not in html
     assert 'id="upload-text"' not in html
     assert 'fetch("/api/analyze/upload"' in script
     assert '<option value="upload">' not in html
-    assert "selectInputRoute" in script
+    assert "selectInputRoutes" in script
     assert 'route.kind === "text"' in script
     assert '$("upload-' not in script
