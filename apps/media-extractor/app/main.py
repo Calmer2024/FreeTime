@@ -1308,6 +1308,21 @@ async def get_task_job(task_id: str) -> dict[str, Any]:
         return dict(item)
 
 
+@app.delete("/api/tasks/completed", include_in_schema=False)
+async def delete_completed_task_jobs() -> dict[str, Any]:
+    with TASKS_LOCK:
+        task_ids = sorted(
+            task_id
+            for task_id, item in TASK_JOBS.items()
+            if item.get("status") in {"success", "error"}
+        )
+        for task_id in task_ids:
+            del TASK_JOBS[task_id]
+        if task_ids:
+            _write_task_jobs()
+    return {"status": "deleted", "deleted": len(task_ids), "ids": task_ids}
+
+
 @app.delete("/api/tasks/{task_id}", include_in_schema=False)
 async def delete_task_job(task_id: str) -> dict[str, str]:
     with TASKS_LOCK:

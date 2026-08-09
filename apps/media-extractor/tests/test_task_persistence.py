@@ -52,6 +52,30 @@ def test_running_task_cannot_be_deleted(tmp_path: Path, monkeypatch) -> None:
     assert "running" in main_module.TASK_JOBS
 
 
+def test_clear_completed_tasks_preserves_active_jobs(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(main_module, "TASKS_FILE", tmp_path / "tasks.json")
+    main_module.TASK_JOBS.clear()
+    main_module._update_task_job("done", status="success", progress=100)
+    main_module._update_task_job("failed", status="error", progress=100)
+    main_module._update_task_job("running", status="running", progress=40)
+    main_module._update_task_job("pending", status="pending", progress=0)
+
+    response = TestClient(main_module.app).delete("/api/tasks/completed")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "deleted",
+        "deleted": 2,
+        "ids": ["done", "failed"],
+    }
+    assert set(main_module.TASK_JOBS) == {"running", "pending"}
+    persisted = (tmp_path / "tasks.json").read_text(encoding="utf-8")
+    assert "done" not in persisted
+    assert "failed" not in persisted
+
+
 def test_missing_task_delete_returns_not_found(
     tmp_path: Path, monkeypatch
 ) -> None:
