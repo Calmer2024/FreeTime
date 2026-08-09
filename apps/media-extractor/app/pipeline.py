@@ -29,7 +29,7 @@ from app.douyin_cookies import (
 from app.mimo import (
     MimoError,
     analyze_keyframes,
-    structure_information,
+    compose_readable_result,
     summarize_video,
     transcribe_audio,
 )
@@ -37,8 +37,10 @@ from app.models import (
     AnalyzeResponse,
     CostStep,
     CoverageInfo,
+    ExtractedResource,
     ExtractionPlan,
     KeyframeEvidence,
+    OpinionAssessment,
     StageTiming,
     StructuredInformation,
     VideoMetadata,
@@ -159,6 +161,164 @@ def _metadata(info: dict[str, Any], original_url: str) -> VideoMetadata:
         thumbnail=info.get("thumbnail"),
         webpage_url=str(info.get("webpage_url") or original_url),
     )
+
+
+def _original_image_urls(info: dict[str, Any]) -> list[str]:
+    urls: list[str] = []
+    for image in info.get("note_images") or []:
+        if not isinstance(image, dict):
+            continue
+        for value in [image.get("url"), *(image.get("fallback_urls") or [])]:
+            candidate = str(value or "").strip()
+            if candidate.startswith(("http://", "https://")):
+                urls.append(candidate)
+                break
+    return list(dict.fromkeys(urls))
+
+
+def _image_resources(image_urls: list[str]) -> list[ExtractedResource]:
+    return [
+        ExtractedResource(
+            title=f"原图 {index:02d}",
+            url=url,
+            kind="image",
+            description="图文帖子原始图片",
+            downloadable=True,
+        )
+        for index, url in enumerate(image_urls, 1)
+    ]
+
+
+def _is_decorative_image_note(info: dict[str, Any]) -> bool:
+    """Detect decorative image-only notes across supported platforms."""
+    if str(info.get("source_subtype") or "") not in {"xiaohongshu_image_note", "douyin_image_note"}:
+        return False
+    images = info.get("note_images") or []
+    if not images:
+        return False
+    description = str(info.get("description") or "").strip()
+    title = str(info.get("title") or "").strip()
+    text = f"{title} {description}"
+    explanatory_terms = (
+        "教程", "步骤", "方法", "测评", "解析", "攻略", "经验", "观点",
+        "介绍", "说明", "知识", "技巧", "避坑", "推荐理由", "清单",
+    )
+    decorative_terms = (
+        "壁纸", "插画", "海报", "插图", "手绘", "美图", "头像", "背景",
+        "桌面", "艺术", "摄影", "illustration", "wallpaper", "poster",
+    )
+    if any(term in text.lower() for term in explanatory_terms):
+        return False
+    return len(description) <= 120 or any(term in text.lower() for term in decorative_terms)
+
+
+def _image_only_response(
+    *,
+    metadata: VideoMetadata,
+    info: dict[str, Any],
+    original_images: list[str],
+    timings: list[StageTiming],
+    pipeline_started: float,
+) -> AnalyzeResponse:
+    description = str(info.get("description") or "").strip()
+    source_text = description or metadata.title
+    image_resources = _image_resources(original_images)
+    plan = ExtractionPlan(
+        video_type="text_dominant",
+        active_modalities=["post_context"],
+        highest_cost_level="L0",
+        reasons=["检测为以图片资源为主的图文帖子，跳过 OCR、视觉理解与 LLM 整理"],
+    )
+    return AnalyzeResponse(
+        request_id=uuid.uuid4().hex[:12],
+        cached=False,
+        strategy="metadata",
+        metadata=metadata,
+        summary=f"这是一个以图片资源为主的图文帖子，共提取 {len(original_images)} 张原图。",
+        key_points=["已提取全部原始图片", "未执行 OCR、视觉理解和信息整合"],
+        topics=[str(item) for item in (info.get("source_context") or {}).get("topics", [])][:8],
+        coverage_note=(
+            f"已识别 {len(original_images)} 张原图；该帖子属于装饰性图片分享，"
+            "为节省时间与成本，已跳过 OCR、视觉理解、ASR 和 LLM 文章整理。"
+        ),
+        full_source_text=source_text,
+        cleaned_article=source_text,
+        original_images=original_images,
+        image_only=True,
+        resources=image_resources,
+        opinion_assessment=OpinionAssessment(
+            verdict="insufficient_evidence",
+            usefulness="图片资源帖不进行观点有效性判断。",
+            reasons=["内容以图片展示为主，未进入语义理解流程"],
+        ),
+        timings=timings,
+        extraction_milliseconds=round((time.perf_counter() - pipeline_started) * 1000),
+        estimated_cost_cny=0,
+        coverage=CoverageInfo(
+            status="complete",
+            text_retention_percent=100,
+            post_context_captured=True,
+            critical_gaps=[],
+        ),
+        extraction_plan=plan,
+        cost_trace=[
+            CostStep(
+                level="L0",
+                name="图片资源直提",
+                executed=True,
+                reason="图文帖子为装饰性图片分享，跳过 OCR、视觉理解与 LLM",
+            )
+        ],
+    )
+
+
+def _local_resources(source_text: str) -> list[ExtractedResource]:
+    urls = re.findall(r"https?://[^\s<>\]）)】]+", source_text)
+    resources: list[ExtractedResource] = []
+    for raw_url in dict.fromkeys(urls):
+        url = raw_url.rstrip(".,，。；;:：!！?？")
+        host = (urlparse(url).hostname or "").lower()
+        path = urlparse(url).path.lower()
+        kind = "github" if host in {"github.com", "www.github.com"} else (
+            "image" if re.search(r"\.(?:png|jpe?g|gif|webp|bmp|avif)$", path) else
+            "file" if re.search(r"\.(?:pdf|zip|7z|rar|docx?|xlsx?|pptx?|csv)$", path) else
+            "website"
+        )
+        resources.append(ExtractedResource(
+            title="GitHub 仓库" if kind == "github" else host or "相关资源",
+            url=url,
+            kind=kind,
+            description="从原始内容中识别出的明确链接",
+            downloadable=kind in {"image", "file"},
+        ))
+    return resources
+
+
+def _reading_result(
+    result: dict[str, Any], source_text: str, title: str
+) -> tuple[str, list[str], list[str], str, list[ExtractedResource], OpinionAssessment]:
+    local_summary = local_extractive_summary(source_text, title, source_text[:1500])
+    summary = str(result.get("summary") or local_summary.get("summary") or "").strip()
+    key_points = [str(item).strip() for item in result.get("key_points") or [] if str(item).strip()]
+    topics = [str(item).strip() for item in result.get("topics") or [] if str(item).strip()]
+    article = str(result.get("article") or "").strip() or _clean_source_article(source_text, title)
+    resources: list[ExtractedResource] = []
+    for item in result.get("resources") or []:
+        if not isinstance(item, dict):
+            continue
+        try:
+            resource = ExtractedResource.model_validate(item)
+        except Exception:
+            continue
+        if resource.url in source_text:
+            resources.append(resource)
+    known = {item.url for item in resources}
+    resources.extend(item for item in _local_resources(source_text) if item.url not in known)
+    try:
+        assessment = OpinionAssessment.model_validate(result.get("opinion_assessment") or {})
+    except Exception:
+        assessment = OpinionAssessment()
+    return summary, key_points[:8], topics[:10], article, resources, assessment
 
 
 def _is_douyin(url: str) -> bool:
@@ -440,6 +600,12 @@ def _extract_info(url: str) -> dict[str, Any]:
                 {"url": image_url, "fallback_urls": [image_url]}
                 for image_url in thumbnail_urls
             ]
+        info["source_context"] = {
+            "topics": [str(item) for item in info.get("tags") or []],
+            "attachments": [],
+        }
+    elif _is_douyin(url) and info.get("note_images"):
+        info["source_subtype"] = "douyin_image_note"
         info["source_context"] = {
             "topics": [str(item) for item in info.get("tags") or []],
             "attachments": [],
@@ -1064,6 +1230,7 @@ async def _analyze_frame_batches(
             return await analyze_keyframes(
                 [(frame.index, frame.timestamp, frame.path) for frame in batch],
                 metadata,
+                ocr_only=all(frame.frame_type == "image_slide" for frame in batch),
             )
 
     outputs = await asyncio.gather(
@@ -1205,23 +1372,17 @@ def _split_readable_paragraphs(text: str, max_chars: int = 420) -> list[str]:
 
 
 def _transcript_retention_percent(transcript: str, article: str) -> float:
-    """Measure whether readable-article reflow retained the acquired transcript."""
+    """Measure whether the edited article retained the transcript's text volume."""
     expected = re.sub(
         r"\[\d{1,2}:\d{2}:\d{2}-\d{1,2}:\d{2}:\d{2}\]\s*",
         "",
         transcript,
     )
     expected = re.sub(r"\s+", "", expected)
-    observed = re.sub(r"\s+", "", article)
+    observed = re.sub(r"[#*_>\-]|\s+", "", article)
     if not expected:
         return 100.0
-    chunk_size = 80
-    chunks = [
-        expected[index : index + chunk_size]
-        for index in range(0, len(expected), chunk_size)
-    ]
-    retained = sum(len(chunk) for chunk in chunks if chunk in observed)
-    return min(100.0, retained / len(expected) * 100)
+    return min(100.0, len(observed) / len(expected) * 100)
 
 
 def _clean_source_article(source_text: str, title: str) -> str:
@@ -1436,6 +1597,21 @@ def _timing(name: str, started: float) -> StageTiming:
     )
 
 
+def _reading_article_status_note(
+    *, reading_degraded: bool, reading_error: str, resource_count: int
+) -> str:
+    if reading_degraded:
+        return (
+            "全文整理失败，当前展示本地清洗后的 ASR/提取原文；"
+            f"错误：{reading_error or '未知错误'}；"
+            "请结合折叠展示的口播与字幕原文复核"
+        )
+    return (
+        "已整理为可阅读文章，并识别 "
+        f"{resource_count} 个明确资源链接"
+    )
+
+
 async def analyze(url: str, mode: str) -> AnalyzeResponse:
     pipeline_started = time.perf_counter()
     timings: list[StageTiming] = []
@@ -1455,6 +1631,7 @@ async def analyze(url: str, mode: str) -> AnalyzeResponse:
     timings.append(_timing("解析视频网址", stage))
 
     metadata = _metadata(info, url)
+    original_images = _original_image_urls(info)
     is_image_carousel = bool(info.get("note_images"))
     duration = float(metadata.duration_seconds or 0)
     if duration and duration > settings.max_duration_seconds:
@@ -1495,6 +1672,7 @@ async def analyze(url: str, mode: str) -> AnalyzeResponse:
             source_text, metadata.title, metadata.webpage_url
         )
         cleaned_article = _clean_source_article(source_text, metadata.title)
+        resources = _local_resources(source_text)
         text_retention = _transcript_retention_percent(
             transcript, cleaned_article
         )
@@ -1513,7 +1691,7 @@ async def analyze(url: str, mode: str) -> AnalyzeResponse:
             visual_analyzed=False,
             post_context_captured=True,
             subtitle_source=subtitle_source,
-            critical_gaps=["未执行 OCR、视觉分析和模型级结构化转换"],
+            critical_gaps=["未执行 OCR、视觉分析和模型级全文整理"],
         )
         cost_trace.extend(
             [
@@ -1525,7 +1703,7 @@ async def analyze(url: str, mode: str) -> AnalyzeResponse:
                 ),
                 CostStep(
                     level="L2",
-                    name="ASR、OCR 与结构化信息转换",
+                    name="ASR、OCR 与全文整理",
                     executed=False,
                     reason="未配置 MIMO_API_KEY",
                 ),
@@ -1545,12 +1723,15 @@ async def analyze(url: str, mode: str) -> AnalyzeResponse:
             summary=str(result.get("summary") or "").strip(),
             key_points=[str(item) for item in result.get("key_points", [])][:5],
             topics=[str(item) for item in result.get("topics", [])][:8],
-            coverage_note="未配置 MiMo Key，当前结果不能作为信源核实输入。",
+            coverage_note="未配置 MiMo Key，当前使用本地整理；文章润色与观点判断未执行。",
             transcript=transcript or None,
             transcript_excerpt=transcript[:1200] if transcript else None,
             transcript_chars=len(transcript),
             full_source_text=source_text or None,
             cleaned_article=cleaned_article,
+            original_images=original_images,
+            resources=resources,
+            opinion_assessment=OpinionAssessment(),
             timings=timings,
             extraction_milliseconds=round(
                 (time.perf_counter() - pipeline_started) * 1000
@@ -1576,8 +1757,8 @@ async def analyze(url: str, mode: str) -> AnalyzeResponse:
     keyframe_success = False
     full_visual_result: dict[str, Any] | None = None
     full_visual_executed = False
-    structured_conversion_degraded = False
-    structured_conversion_error = ""
+    reading_degraded = False
+    reading_error = ""
     plan = ExtractionPlan()
     raw_frames: list[AdaptiveFrame] = []
     keyframe_output: dict[str, Any] | BaseException | None = None
@@ -1674,7 +1855,7 @@ async def analyze(url: str, mode: str) -> AnalyzeResponse:
                 keyframe_output = None
             timings.append(
                 _timing(
-                    "逐图 OCR 与视觉理解"
+                    "逐图 OCR（不进行画面观察）"
                     if is_image_carousel
                     else "关键帧 OCR 与画面观察",
                     stage,
@@ -1783,7 +1964,7 @@ async def analyze(url: str, mode: str) -> AnalyzeResponse:
                 f"正文：{metadata_for_prompt['description'][:settings.max_transcript_chars]}"
             ),
             f"[语音/字幕]\n{transcript}" if transcript else "",
-            f"[自适应关键帧 OCR 与观察]\n{keyframe_text}" if keyframe_text else "",
+            f"[图片/关键帧 OCR]\n{keyframe_text}" if keyframe_text else "",
             (
                 f"[实况照片动态轨]\n{live_photo_text}"
                 if live_photo_text else ""
@@ -1800,25 +1981,22 @@ async def analyze(url: str, mode: str) -> AnalyzeResponse:
 
         stage = time.perf_counter()
         try:
-            structured_result = await structure_information(
+            reading_payload = await compose_readable_result(
                 combined_input, metadata_for_prompt
             )
-            structured = _structured_information_from_model_result(structured_result)
         except MimoError as exc:
-            structured_conversion_degraded = True
-            structured_conversion_error = str(exc)
-            structured_result = {}
-            structured = _local_structured_information(
-                combined_input, metadata.title, metadata.webpage_url
-            )
-        timings.append(_timing("标准结构化信息转换", stage))
-        estimated_cost += _token_usage_cost_cny(structured_result) or (
-            min(len(combined_input), settings.max_transcript_chars) / 1_000_000
-            + 5000 / 1_000_000 * 2
+            reading_degraded = True
+            reading_error = str(exc)
+            reading_payload = {}
+        timings.append(_timing("LLM 全文整理与资源判断", stage))
+        estimated_cost += _token_usage_cost_cny(reading_payload)
+        summary, key_points, topics, cleaned_article, resources, opinion_assessment = (
+            _reading_result(reading_payload, combined_input, metadata.title)
         )
-        summary, key_points, topics = _structured_reading_result(structured)
+        structured = _local_structured_information(
+            combined_input, metadata.title, metadata.webpage_url
+        )
 
-    cleaned_article = _clean_source_article(combined_input, metadata.title)
     text_retention = _transcript_retention_percent(
         transcript, cleaned_article
     )
@@ -1836,8 +2014,8 @@ async def analyze(url: str, mode: str) -> AnalyzeResponse:
         critical_gaps.append("语音覆盖不足 95%")
     if missing_ranges and "语音覆盖不足 95%" not in critical_gaps:
         critical_gaps.append("部分语音分段处理失败")
-    if transcript and text_retention < 99:
-        critical_gaps.append("完整全文重组保留率不足 99%")
+    if transcript and text_retention < 55:
+        critical_gaps.append("完整全文有效正文篇幅不足原文的 55%")
     if visual_fallback_required and not keyframe_success:
         critical_gaps.append("自适应关键帧 OCR 未完成")
     returned_frame_count = len(
@@ -1858,9 +2036,9 @@ async def analyze(url: str, mode: str) -> AnalyzeResponse:
         critical_gaps.append(
             f"{len(live_photo_failures)} 段实况照片动态轨分析失败"
         )
-    if structured_conversion_degraded:
+    if reading_degraded:
         critical_gaps.append(
-            "模型级结构化转换失败，已保留完整原文并执行本地降级"
+            "LLM 全文整理或观点判断失败，已保留完整原文并执行本地降级"
         )
     if _has_unfilled_event_video_gap(
         is_image_carousel=is_image_carousel,
@@ -1869,18 +2047,12 @@ async def analyze(url: str, mode: str) -> AnalyzeResponse:
         full_visual_executed=full_visual_executed,
     ):
         critical_gaps.append("事件型视频的全视频多模态补充未完成")
-    structured_count = (
-        len(structured.atomic_claims)
-        + len(structured.implicit_opinions)
-    )
-    if structured_conversion_degraded:
+    if reading_degraded:
         coverage_status = "needs_review"
     elif critical_gaps:
         coverage_status = "partial"
-    elif structured_count:
-        coverage_status = "structured_ready"
     else:
-        coverage_status = "no_structured_information"
+        coverage_status = "complete"
 
     scene_percent = frame_coverage
     screen_text_percent = frame_coverage
@@ -1895,17 +2067,16 @@ async def analyze(url: str, mode: str) -> AnalyzeResponse:
             f"；已分析 {len(live_photo_results)}/"
             f"{len(info.get('live_photo_videos') or [])} 段实况动态轨"
         )
+    article_status_note = _reading_article_status_note(
+        reading_degraded=reading_degraded,
+        reading_error=reading_error,
+        resource_count=len(resources),
+    )
     coverage_note = (
         f"语音覆盖 {audio_coverage:.1f}%；"
         f"全文重组保留 {text_retention:.1f}%；{visual_coverage_note}；"
-        f"结构化输出包含 {len(structured.atomic_claims)} 条原子主张和"
-        f"{len(structured.implicit_opinions)} 条隐性观点。"
+        f"{article_status_note}。"
     )
-    if structured_conversion_degraded:
-        coverage_note += (
-            f" 结构化转换已降级：{structured_conversion_error}；"
-            "下游应结合完整原文复核。"
-        )
     if critical_gaps:
         coverage_note += f" 关键缺口：{'；'.join(critical_gaps)}。"
     if missing_ranges:
@@ -1921,12 +2092,12 @@ async def analyze(url: str, mode: str) -> AnalyzeResponse:
             ),
             CostStep(
                 level="L2",
-                name="完整 ASR 或关键帧 OCR 与结构化转换",
+                name="完整 ASR、关键帧 OCR 与阅读稿整理",
                 executed=True,
                 reason=(
                     "复用完整平台字幕，跳过 ASR 与视觉提取"
                     if subtitle_source != "none"
-                    else "下载全部图文图片并逐图执行 OCR/视觉理解"
+                    else "下载全部图文图片并逐图执行 OCR，不进行画面观察"
                     if is_image_carousel
                     else (
                         "完整 ASR 已获得有效口播文本，跳过关键帧 OCR"
@@ -1970,14 +2141,10 @@ async def analyze(url: str, mode: str) -> AnalyzeResponse:
         transcript_excerpt=transcript[:5000] if transcript else None,
         transcript_chars=len(transcript),
         full_source_text=combined_input,
-        structured_input_text=combined_input[: settings.max_transcript_chars],
-        structured_input_chars=min(
-            len(combined_input), settings.max_transcript_chars
-        ),
-        structured_input_truncated=(
-            len(combined_input) > settings.max_transcript_chars
-        ),
         cleaned_article=cleaned_article,
+        original_images=original_images,
+        resources=resources,
+        opinion_assessment=opinion_assessment,
         timings=timings,
         extraction_milliseconds=round(
             (time.perf_counter() - pipeline_started) * 1000

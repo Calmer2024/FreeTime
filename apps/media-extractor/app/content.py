@@ -14,16 +14,13 @@ from bs4 import BeautifulSoup
 from fastapi import UploadFile
 
 from app.config import settings
-from app.mimo import MimoError, analyze_keyframes, structure_information, summarize_video, transcribe_audio
+from app.mimo import MimoError, analyze_keyframes, compose_readable_result, summarize_video, transcribe_audio
 from app.models import AnalyzeResponse, CostStep, CoverageInfo, ExtractionPlan, StageTiming, VideoMetadata
 from app.pipeline import (
     PipelineError,
-    _clean_source_article,
     _compress_video_for_mimo,
     _extract_audio,
-    _local_structured_information,
-    _structured_information_from_model_result,
-    _structured_reading_result,
+    _reading_result,
 )
 from app.security import BROWSER_USER_AGENT, REDIRECT_LIMIT, validate_public_url
 from app.thumbnails import thumbnail_store
@@ -115,7 +112,7 @@ def extract_article(html: str, url: str) -> tuple[str, str, str | None, str | No
     return title or "未命名文章", article[: settings.max_transcript_chars], author, thumbnail
 
 
-async def _structured_response(
+async def _reading_response(
     source_text: str,
     metadata: VideoMetadata,
     *,
@@ -127,37 +124,42 @@ async def _structured_response(
     started = time.perf_counter()
     if settings.mimo_api_key:
         try:
-            raw = await structure_information(source_text, metadata.model_dump())
-            structured = _structured_information_from_model_result(raw)
-            status = "structured_ready"
+            raw = await compose_readable_result(source_text, metadata.model_dump())
+            summary, key_points, topics, article, resources, assessment = _reading_result(
+                raw, source_text, metadata.title
+            )
+            status = "complete"
             gaps: list[str] = []
         except MimoError as exc:
-            structured = _local_structured_information(source_text, metadata.title, metadata.webpage_url)
+            raw = {}
+            summary, key_points, topics, article, resources, assessment = _reading_result(
+                raw, source_text, metadata.title
+            )
             status = "needs_review"
-            gaps = [f"模型级结构化转换失败：{exc}"]
+            gaps = [f"LLM 全文整理失败：{exc}"]
     else:
-        structured = _local_structured_information(source_text, metadata.title, metadata.webpage_url)
+        summary, key_points, topics, article, resources, assessment = _reading_result(
+            {}, source_text, metadata.title
+        )
         status = "partial"
-        gaps = ["未配置 MIMO_API_KEY，当前为本地结构化预览"]
-    summary, key_points, topics = _structured_reading_result(structured)
+        gaps = ["未配置 MIMO_API_KEY，当前为本地文章整理"]
     all_timings = list(timings or [])
-    all_timings.append(StageTiming(name="标准结构化信息转换", milliseconds=round((time.perf_counter() - started) * 1000)))
+    all_timings.append(StageTiming(name="LLM 全文整理与资源判断", milliseconds=round((time.perf_counter() - started) * 1000)))
     return AnalyzeResponse(
         request_id=uuid.uuid4().hex[:12], cached=False, strategy=strategy,
         metadata=metadata, summary=summary, key_points=key_points, topics=topics,
         coverage_note=coverage_note + (f" 关键缺口：{'；'.join(gaps)}。" if gaps else ""),
         full_source_text=source_text,
-        structured_input_text=source_text[: settings.max_transcript_chars],
-        structured_input_chars=min(len(source_text), settings.max_transcript_chars),
-        structured_input_truncated=len(source_text) > settings.max_transcript_chars,
-        cleaned_article=_clean_source_article(source_text, metadata.title),
+        cleaned_article=article,
+        resources=resources,
+        opinion_assessment=assessment,
         timings=all_timings,
         extraction_milliseconds=sum(item.milliseconds for item in all_timings),
         coverage=CoverageInfo(
             status=status, text_retention_percent=100, visual_analyzed=bool(visual_notes),
             post_context_captured=True, critical_gaps=gaps,
         ),
-        visual_notes=visual_notes or [], structured_data=structured,
+        visual_notes=visual_notes or [],
         extraction_plan=ExtractionPlan(
             video_type="mixed" if visual_notes else "text_dominant",
             active_modalities=["post_context", *( ["visual"] if visual_notes else [])],
@@ -166,7 +168,7 @@ async def _structured_response(
         cost_trace=[
             CostStep(level="L0", name="输入安全与类型识别", executed=True, reason="统一内容入口"),
             CostStep(level="L1", name="正文或上传文件提取", executed=True, reason="保留可回溯原文"),
-            CostStep(level="L2", name="多模态理解与结构化转换", executed=True, reason="生成信源核实标准输入"),
+            CostStep(level="L2", name="多模态理解与阅读稿整理", executed=True, reason="生成可直接阅读的文章与资源判断"),
             CostStep(level="L3", name="全视频多模态升级", executed=False, reason="当前输入无需额外升级"),
         ],
     )
@@ -182,7 +184,7 @@ async def analyze_article_url(url: str) -> AnalyzeResponse:
         uploader=author, thumbnail=thumbnail, webpage_url=final_url,
     )
     source = f"[发布上下文]\n标题：{title}\n作者：{author or ''}\n来源：{final_url}\n\n[文章正文]\n{article}"
-    return await _structured_response(
+    return await _reading_response(
         source, metadata, timings=[timing],
         coverage_note=f"已提取文章正文 {len(article)} 个字符，并保留最终来源 URL。",
     )
@@ -268,7 +270,7 @@ async def analyze_upload_bundle(title: str, text: str, files: list[UploadFile]) 
         webpage_url=f"upload://{digest}",
     )
     timing = StageTiming(name="解析手动多模态组合", milliseconds=round((time.perf_counter() - started) * 1000))
-    return await _structured_response(
+    return await _reading_response(
         source, metadata, strategy="hybrid" if visual_notes else "metadata",
         visual_notes=visual_notes, timings=[timing],
         coverage_note=f"已合并用户说明与 {len(files)} 个上传文件，作为一个核验案例处理。",

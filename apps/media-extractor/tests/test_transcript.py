@@ -11,6 +11,7 @@ from app.mimo import (
     _recommended_claim_density,
     _structured_quality_issues,
     _validate_structured_result,
+    compose_readable_result,
     structure_information,
 )
 from app.security import (
@@ -93,6 +94,23 @@ def test_clean_source_article_preserves_long_continuous_chinese_text() -> None:
     compact_article = re.sub(r"\s+", "", article)
     assert "".join(sentences) in compact_article
     assert _transcript_retention_percent("".join(sentences), article) == 100
+
+
+def test_transcript_retention_tracks_edited_article_volume() -> None:
+    transcript = (
+        "首先构建黄金测试集，然后检查正确切块是否进入前五个召回结果。"
+        "接着使用平均倒数排名判断正确答案是否排在前面。"
+        "最后评估生成回答是否忠于检索上下文，并区分检索错误和生成错误。"
+    )
+    article = (
+        "# RAG 评测\n\n## 检索\n先准备黄金数据，确认正确文档能出现在前五名，"
+        "再通过平均倒数排名衡量排序。\n\n## 生成\n检查回答有没有忠实使用检索上下文，"
+        "同时把召回问题与生成问题分别定位。"
+    )
+
+    retention = _transcript_retention_percent(transcript, article)
+
+    assert 55 <= retention < 100
 
 
 def test_empty_asr_chunk_does_not_report_full_audio_coverage(monkeypatch) -> None:
@@ -306,14 +324,18 @@ def test_cache_purges_payloads_from_previous_protocol(
     assert reloaded.get("current") is not None
 
 
-def test_cache_key_includes_pipeline_version(monkeypatch) -> None:
-    original = ResultCache.PIPELINE_VERSION
-    before = ResultCache.key("https://example.com/video", "auto")
-    monkeypatch.setattr(ResultCache, "PIPELINE_VERSION", "next-pipeline")
-    after = ResultCache.key("https://example.com/video", "auto")
+def test_reading_recovery_does_not_reuse_v5_cache_key(monkeypatch) -> None:
+    current_version = ResultCache.PIPELINE_VERSION
+    url = "auto:https://www.douyin.com/video/7648326077760195892"
 
-    assert original == "atomic-claims-only-v1"
-    assert before != after
+    monkeypatch.setattr(
+        ResultCache, "PIPELINE_VERSION", "full-article-web-opinion-v5"
+    )
+    degraded_v5_key = ResultCache.key(url, "visual")
+    monkeypatch.setattr(ResultCache, "PIPELINE_VERSION", current_version)
+    recovered_key = ResultCache.key(url, "visual")
+
+    assert recovered_key != degraded_v5_key
 
 
 def test_bilibili_prefers_platform_backup_cdn(monkeypatch) -> None:
@@ -625,6 +647,96 @@ def test_malformed_json_is_wrapped_as_mimo_error() -> None:
         pass
     else:
         raise AssertionError("malformed model JSON should be a MimoError")
+
+
+def test_reading_result_retries_abort_with_flat_schema(monkeypatch) -> None:
+    calls = []
+    valid_result = {
+        "summary": "RAG 评测需要分层检查检索与生成质量。",
+        "key_points": ["先测检索召回", "再测生成是否忠于上下文"],
+        "topics": ["RAG", "评测"],
+        "article": (
+            "# RAG 评测\n\n## 检索阶段\n先使用黄金测试集检查正确切块是否进入"
+            "前 K 个召回结果，并结合 Recall@K、MRR 和 NDCG 判断召回与排序质量。"
+            "\n\n## 生成阶段\n再检查最终回答是否忠于检索上下文、是否真正回答问题，"
+            "并把检索错误和生成错误分开定位，避免只凭最终回答反复试错。"
+        ),
+    }
+
+    async def fake_completion(payload, timeout=120):
+        calls.append(payload)
+        if len(calls) == 1:
+            return {
+                "choices": [{
+                    "finish_reason": "abort",
+                    "message": {"content": '{\n  "article": "# R'},
+                }],
+                "usage": {"completion_tokens": 8},
+            }
+        return {
+            "choices": [{
+                "finish_reason": "stop",
+                "message": {
+                    "content": json.dumps(valid_result, ensure_ascii=False),
+                },
+            }],
+            "usage": {"completion_tokens": 80},
+        }
+
+    async def fake_assessment(source_text, metadata, preliminary=None):
+        return {"_usage": {}}
+
+    monkeypatch.setattr("app.mimo._completion", fake_completion)
+    monkeypatch.setattr(
+        "app.mimo.assess_opinion_with_web_search", fake_assessment
+    )
+
+    result = asyncio.run(compose_readable_result("输入", {"title": "标题"}))
+
+    assert result["article"] == valid_result["article"]
+    assert len(calls) == 2
+    assert list(
+        calls[0]["response_format"]["json_schema"]["schema"]["properties"]
+    ) == ["summary", "key_points", "topics", "article"]
+
+
+def test_reading_result_reports_abort_after_single_retry(monkeypatch) -> None:
+    calls = []
+
+    async def fake_completion(payload, timeout=120):
+        calls.append(payload)
+        return {
+            "choices": [{
+                "finish_reason": "abort",
+                "message": {"content": '{\n  "article": "# R'},
+            }],
+            "usage": {"completion_tokens": 8},
+        }
+
+    monkeypatch.setattr("app.mimo._completion", fake_completion)
+
+    try:
+        asyncio.run(compose_readable_result("输入", {"title": "标题"}))
+    except MimoError as exc:
+        assert "abort" in str(exc)
+    else:
+        raise AssertionError("two aborted reading attempts must raise MimoError")
+    assert len(calls) == 2
+
+
+def test_reading_degraded_note_describes_source_fallback() -> None:
+    from app.pipeline import _reading_article_status_note
+
+    note = _reading_article_status_note(
+        reading_degraded=True,
+        reading_error="MiMo 文章整理生成未完成（abort）",
+        resource_count=0,
+    )
+
+    assert "全文整理失败，当前展示" in note
+    assert "ASR/提取原文" in note
+    assert "abort" in note
+    assert "已整理为可阅读文章" not in note
 
 
 def test_structured_information_json_is_repaired_once(monkeypatch) -> None:

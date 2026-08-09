@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 from dotenv import load_dotenv
+
+from app.storage import cache_root, data_root
 
 
 load_dotenv()
@@ -11,6 +14,8 @@ load_dotenv()
 
 @dataclass(frozen=True)
 class Settings:
+    data_dir: Path = data_root()
+    cache_dir: Path = cache_root()
     mimo_api_key: str = os.getenv("MIMO_API_KEY", "").strip()
     mimo_base_url: str = os.getenv(
         "MIMO_BASE_URL", "https://api.xiaomimimo.com/v1"
@@ -36,7 +41,7 @@ class Settings:
         os.getenv("DOUYIN_COOKIE_MAX_AGE_SECONDS", "1800")
     )
     douyin_browser_profile_dir: str = os.getenv(
-        "DOUYIN_BROWSER_PROFILE_DIR", ".cache/douyin-browser-profile"
+        "DOUYIN_BROWSER_PROFILE_DIR", str(cache_root() / "douyin-browser-profile")
     ).strip()
     douyin_browser_headless: bool = (
         os.getenv("DOUYIN_BROWSER_HEADLESS", "true").strip().lower()

@@ -8,14 +8,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from app.storage import cache_root
+
 
 class ResultCache:
     SCHEMA_VERSION = "structured-information-v4"
-    PIPELINE_VERSION = "atomic-claims-only-v1"
+    PIPELINE_VERSION = "full-article-reading-recovery-v6"
 
     def __init__(self, ttl_seconds: int) -> None:
-        cache_dir = Path(".cache")
-        cache_dir.mkdir(exist_ok=True)
+        cache_dir = cache_root()
         self.path = cache_dir / "video_summary.sqlite3"
         self.ttl_seconds = ttl_seconds
         with self._connect() as connection:
@@ -28,21 +29,6 @@ class ResultCache:
                 )
                 """
             )
-            rows = connection.execute(
-                "SELECT cache_key, payload FROM summaries"
-            ).fetchall()
-            legacy_keys = []
-            for cache_key, payload in rows:
-                try:
-                    decoded = json.loads(payload)
-                except json.JSONDecodeError:
-                    decoded = {}
-                if decoded.get("protocol_version") != self.SCHEMA_VERSION:
-                    legacy_keys.append((cache_key,))
-            if legacy_keys:
-                connection.executemany(
-                    "DELETE FROM summaries WHERE cache_key = ?", legacy_keys
-                )
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.path, timeout=5)

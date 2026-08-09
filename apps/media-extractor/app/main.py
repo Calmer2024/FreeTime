@@ -2,17 +2,22 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
+import os
+import re
 import subprocess
 import sys
 import threading
 import time
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
-from fastapi import APIRouter, FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse
+import httpx
+
+from fastapi import APIRouter, FastAPI, File, Form, HTTPException, UploadFile, Query
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.cache import ResultCache
@@ -23,17 +28,22 @@ from app.models import (
     DeleteResponse,
     StageTiming,
     StoredVideoList,
-    StructuredInformation,
 )
 from app.pipeline import (
     PipelineError,
     _clean_source_article,
-    _structured_reading_result,
     analyze,
 )
 from app.content import analyze_article_url, analyze_upload_bundle
-from app.security import ALLOWED_HOST_SUFFIXES, UnsafeUrlError, resolve_content_input
+from app.security import (
+    ALLOWED_HOST_SUFFIXES,
+    BROWSER_USER_AGENT,
+    UnsafeUrlError,
+    resolve_content_input,
+    validate_public_url,
+)
 from app.thumbnails import thumbnail_store
+from app.storage import data_root
 
 
 # ========== FreeTime 主应用 ==========
@@ -45,11 +55,115 @@ app = FastAPI(
 )
 
 # 目录配置
-BASE_DIR = Path(__file__).parent.parent.parent.parent  # FreeTime 根目录
+if getattr(sys, "frozen", False):
+    # PyInstaller 打包模式: _internal/ 下有 portal/, static/, apps/
+    # 注意: --contents-directory . 会把数据文件放在 _internal/ 而不是 exe 同级目录
+    BASE_DIR = Path(sys._MEIPASS)
+else:
+    BASE_DIR = Path(__file__).parent.parent.parent.parent  # FreeTime 根目录
+
 PORTAL_DIR = BASE_DIR / "portal"
-STATIC_DIR = Path(__file__).parent.parent / "static"
+# extractor 前端文件 (index.html, app.js, app.css)
+STATIC_DIR = BASE_DIR / "apps" / "media-extractor" / "static"
 ROOT_STATIC_DIR = BASE_DIR / "static"
 CHAOXING_DIR = BASE_DIR / "apps" / "chaoxing-auto"
+DATA_DIR = data_root()
+TASKS_FILE = DATA_DIR / "task-jobs.json"
+TASKS_LOCK = threading.RLock()
+DOWNLOAD_SETTINGS_FILE = DATA_DIR / "download-settings.json"
+REMOTE_IMAGE_CACHE = DATA_DIR / ".cache" / "remote-images"
+REMOTE_IMAGE_CACHE.mkdir(parents=True, exist_ok=True)
+
+
+def _load_task_jobs() -> dict[str, dict[str, Any]]:
+    try:
+        payload = json.loads(TASKS_FILE.read_text(encoding="utf-8"))
+        return payload if isinstance(payload, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+TASK_JOBS: dict[str, dict[str, Any]] = _load_task_jobs()
+
+
+def _write_task_jobs() -> None:
+    with TASKS_LOCK:
+        trimmed = dict(sorted(
+            TASK_JOBS.items(),
+            key=lambda item: float(item[1].get("updated_at") or 0),
+            reverse=True,
+        )[:200])
+        TASK_JOBS.clear()
+        TASK_JOBS.update(trimmed)
+        temp = TASKS_FILE.with_suffix(".tmp")
+        temp.write_text(json.dumps(TASK_JOBS, ensure_ascii=False), encoding="utf-8")
+        temp.replace(TASKS_FILE)
+
+
+def _update_task_job(task_id: str | None, **values: Any) -> None:
+    if not task_id:
+        return
+    with TASKS_LOCK:
+        current = TASK_JOBS.setdefault(task_id, {
+            "id": task_id,
+            "status": "pending",
+            "progress": 0,
+            "started_at": time.time(),
+            "updated_at": time.time(),
+        })
+        current.update(values)
+        current["updated_at"] = time.time()
+        _write_task_jobs()
+
+
+def _download_directory() -> Path:
+    default = Path.home() / "Downloads" / "FreeTime"
+    try:
+        payload = json.loads(DOWNLOAD_SETTINGS_FILE.read_text(encoding="utf-8"))
+        configured = str(payload.get("directory") or "").strip()
+        target = Path(configured).expanduser() if configured else default
+    except (OSError, json.JSONDecodeError):
+        target = default
+    target.mkdir(parents=True, exist_ok=True)
+    return target.resolve()
+
+
+def _project_download_directory(project_name: str | None = None) -> Path:
+    root = _download_directory()
+    label = re.sub(
+        r'[<>:"：/\\|?*\x00-\x1f]+',
+        "_",
+        str(project_name or "未命名项目"),
+    ).strip(" .")
+    label = re.sub(r"\s+", " ", label).strip()[:80] or "未命名项目"
+    target = root / label
+    target.mkdir(parents=True, exist_ok=True)
+    return target.resolve()
+
+
+def _safe_download_name(filename: str, fallback: str = "resource") -> str:
+    cleaned = re.sub(
+        r'[<>:"：/\\|?*\x00-\x1f]+', "_", str(filename)
+    ).strip(" .")
+    return cleaned or fallback
+
+
+def _resource_headers(url: str) -> dict[str, str]:
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    referer = (
+        "https://www.xiaohongshu.com/"
+        if host.endswith("xhscdn.com")
+        else "https://www.douyin.com/"
+        if host.endswith(("douyinpic.com", "douyinvod.com"))
+        else f"{parsed.scheme}://{parsed.netloc}/"
+    )
+    return {
+        "User-Agent": BROWSER_USER_AGENT,
+        "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.7",
+        "Referer": referer,
+    }
 
 # 挂载静态文件
 app.mount("/static", StaticFiles(directory=ROOT_STATIC_DIR), name="root-static")
@@ -75,7 +189,7 @@ class ChaoxingState:
         self.config = self._load_config()
 
     def _load_config(self) -> dict:
-        config_path = CHAOXING_DIR / "config.json"
+        config_path = DATA_DIR / "chaoxing" / "config.json"
         if config_path.exists():
             return json.loads(config_path.read_text(encoding="utf-8"))
         return {
@@ -84,7 +198,8 @@ class ChaoxingState:
         }
 
     def save_config(self, config: dict) -> None:
-        config_path = CHAOXING_DIR / "config.json"
+        config_path = DATA_DIR / "chaoxing" / "config.json"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
         self.config = config
 
@@ -174,29 +289,17 @@ def _ensure_cleaned_article(payload: dict[str, object]) -> dict[str, object]:
     metadata = payload.get("metadata")
     metadata_dict = metadata if isinstance(metadata, dict) else {}
     full_source_text = str(payload.get("full_source_text") or "")
-    if not payload.get("structured_input_text") and full_source_text:
-        structured_input = full_source_text[: settings.max_transcript_chars]
-        payload["structured_input_text"] = structured_input
-        payload["structured_input_chars"] = len(structured_input)
-        payload["structured_input_truncated"] = (
-            len(full_source_text) > settings.max_transcript_chars
-        )
     if not payload.get("cleaned_article"):
         payload["cleaned_article"] = _clean_source_article(
             full_source_text,
             str(metadata_dict.get("title") or ""),
         )
-    structured_payload = payload.get("structured_data")
-    if isinstance(structured_payload, dict):
-        structured = StructuredInformation.model_validate(structured_payload)
-        summary, _, _ = _structured_reading_result(structured)
-        payload["summary"] = summary
     return payload
 
 
 # ========== 页面路由 ==========
 
-SETTINGS_FILE = BASE_DIR / "settings.json"
+SETTINGS_FILE = DATA_DIR / "settings.json"
 
 
 def load_settings() -> dict:
@@ -215,7 +318,7 @@ def save_settings(settings: dict) -> None:
 async def portal() -> HTMLResponse:
     """FreeTime 主门户入口"""
     content = (PORTAL_DIR / "index.html").read_text(encoding="utf-8")
-    return HTMLResponse(content=content)
+    return HTMLResponse(content=content, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/settings")
@@ -235,7 +338,7 @@ async def update_settings(data: dict):
 async def extractor_index() -> HTMLResponse:
     """流媒体内容提取器入口"""
     content = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
-    return HTMLResponse(content=content)
+    return HTMLResponse(content=content, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/chaoxing", include_in_schema=False)
@@ -260,6 +363,7 @@ async def chaoxing_index() -> HTMLResponse:
   <style>
     :root {{
       color-scheme: light;
+      font-size: 14px;
       --shell: #ffffff;
       --surface: #ffffff;
       --surface-muted: #f6f6f7;
@@ -271,117 +375,92 @@ async def chaoxing_index() -> HTMLResponse:
       --action-hover: #000000;
       --danger: #9a5a53;
       --danger-soft: #f3e8e6;
+      --scrollbar-thumb: rgba(82, 84, 88, .24);
+      --scrollbar-thumb-hover: rgba(52, 54, 58, .42);
       --radius-sm: 9px;
       --radius-md: 12px;
       --radius-lg: 18px;
       --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei UI", sans-serif;
     }}
     * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    * {{ scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) transparent; }}
+    *::-webkit-scrollbar {{ width: 10px; height: 10px; }}
+    *::-webkit-scrollbar-track {{ background: transparent; }}
+    *::-webkit-scrollbar-thumb {{
+      min-height: 44px; border: 3px solid transparent; border-radius: 999px;
+      background: var(--scrollbar-thumb); background-clip: content-box;
+    }}
+    *::-webkit-scrollbar-thumb:hover {{ background-color: var(--scrollbar-thumb-hover); }}
+    *::-webkit-scrollbar-corner {{ background: transparent; }}
     html, body {{ width: 100%; height: 100%; overflow: hidden; }}
-    body {{ font-family: var(--font-sans); background: var(--shell); color: var(--ink); }}
+    body {{
+      display: flex; flex-direction: column;
+      font-family: var(--font-sans); background: var(--shell); color: var(--ink);
+    }}
 
-    /* 头部 */
     .cx-header {{
-      display: flex;
-      align-items: center;
-      gap: 16px;
+      flex: 0 0 auto;
+      display: flex; align-items: center; gap: 16px;
       padding: 10px 20px;
-      background: rgba(255, 255, 255, 0.85);
+      background: rgba(255,255,255,0.85);
       backdrop-filter: saturate(180%) blur(20px);
     }}
     .cx-back {{
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 8px 12px;
-      color: var(--ink-secondary);
-      text-decoration: none;
-      font-size: 14px;
-      font-weight: 500;
-      border-radius: var(--radius-sm);
-      transition: background 0.2s;
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 12px; color: var(--ink-secondary);
+      text-decoration: none; font-size: 14px; font-weight: 500;
+      border-radius: var(--radius-sm); transition: background 0.2s;
     }}
     .cx-back:hover {{ color: var(--ink); background: var(--surface-muted); }}
     .cx-back svg {{ width: 18px; height: 18px; }}
     .cx-logo {{
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding-right: 16px;
-      border-right: 1px solid var(--line);
+      min-width: 0; display: flex; align-items: center; gap: 10px;
+      padding-right: 16px; border-right: 1px solid var(--line);
     }}
-    .cx-logo-icon {{
-      width: 32px; height: 32px;
-      object-fit: contain;
+    .cx-logo-icon {{ width: 32px; height: 32px; object-fit: contain; }}
+    .cx-title {{
+      min-width: 0; overflow: hidden; font-size: 16px; font-weight: 600;
+      color: var(--ink); text-overflow: ellipsis; white-space: nowrap;
     }}
-    .cx-title {{ font-size: 16px; font-weight: 600; color: var(--ink); }}
 
-    /* 内容 */
     .cx-content {{
-      max-width: 720px;
-      margin: 0 auto;
-      padding: 20px;
-      height: calc(100vh - 53px);
+      flex: 1 1 auto; min-height: 0;
+      width: min(900px, 100% - 40px);
+      margin: 0 auto; padding: 20px;
       overflow-y: auto;
     }}
 
-    /* 卡片 */
     .cx-card {{
-      background: var(--surface);
-      border-radius: var(--radius-lg);
+      background: var(--surface); border-radius: var(--radius-lg);
       box-shadow: 0 1px 3px rgba(0,0,0,.04), 0 4px 12px rgba(0,0,0,.04);
-      margin-bottom: 16px;
-      overflow: hidden;
+      margin-bottom: 16px; overflow: hidden;
     }}
     .cx-card-header {{
-      padding: 16px 20px;
-      border-bottom: 0.5px solid var(--line);
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--ink);
-      display: flex;
-      align-items: center;
-      gap: 8px;
+      padding: 16px 20px; border-bottom: 0.5px solid var(--line);
+      font-size: 14px; font-weight: 600; color: var(--ink);
+      display: flex; align-items: center; gap: 8px;
     }}
     .cx-card-body {{ padding: 20px; }}
 
-    /* 状态 */
     .cx-status {{
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 12px 16px;
-      background: var(--surface-muted);
-      border-radius: var(--radius-sm);
-      margin-bottom: 16px;
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 16px; background: var(--surface-muted);
+      border-radius: var(--radius-sm); margin-bottom: 16px;
     }}
     .cx-status-dot {{
-      width: 10px; height: 10px;
-      border-radius: 50%;
-      background: var(--ink-tertiary);
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--ink-tertiary); flex-shrink: 0;
     }}
-    .cx-status-dot.active {{
-      background: #34c759;
-      animation: pulse 2s infinite;
-    }}
+    .cx-status-dot.active {{ background: #34c759; animation: pulse 2s infinite; }}
     @keyframes pulse {{ 0%,100% {{ opacity:1; }} 50% {{ opacity:.5; }} }}
     .cx-status-text {{ font-size: 14px; color: var(--ink-secondary); }}
 
-    /* 按钮 */
     .cx-btn-group {{ display: flex; gap: 12px; }}
     .cx-btn {{
-      flex: 1;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      padding: 10px 16px;
-      border: none;
-      border-radius: var(--radius-sm);
-      font-size: 14px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.16s;
+      flex: 1; display: inline-flex; align-items: center; justify-content: center;
+      gap: 8px; padding: 10px 16px; border: none;
+      border-radius: var(--radius-sm); font-size: 14px;
+      font-weight: 500; cursor: pointer; transition: all 0.16s;
     }}
     .cx-btn svg {{ width: 16px; height: 16px; }}
     .cx-btn-primary {{ background: var(--action); color: white; }}
@@ -390,45 +469,58 @@ async def chaoxing_index() -> HTMLResponse:
     .cx-btn-danger:hover {{ background: #8a4a43; }}
     .cx-btn:disabled {{ opacity: .45; cursor: not-allowed; }}
 
-    /* 表单 */
     .cx-form-group {{ margin-bottom: 16px; }}
     .cx-form-group:last-child {{ margin-bottom: 0; }}
     .cx-label {{ display: block; font-size: 13px; color: var(--ink-secondary); margin-bottom: 6px; }}
     .cx-input {{
-      width: 100%;
-      padding: 10px 14px;
-      font-size: 14px;
-      background: var(--surface-muted);
-      border: 1px solid var(--line);
-      border-radius: var(--radius-sm);
-      color: var(--ink);
+      min-width: 0; width: 100%; padding: 10px 14px; font-size: 14px;
+      background: var(--surface-muted); border: 1px solid var(--line);
+      border-radius: var(--radius-sm); color: var(--ink);
     }}
     .cx-input:focus {{ outline: none; border-color: var(--action); }}
     .cx-select {{
-      width: 100%;
-      padding: 10px 14px;
-      font-size: 14px;
-      background: var(--surface-muted);
-      border: 1px solid var(--line);
-      border-radius: var(--radius-sm);
-      color: var(--ink);
-      cursor: pointer;
+      width: 100%; padding: 10px 14px; font-size: 14px;
+      background: var(--surface-muted); border: 1px solid var(--line);
+      border-radius: var(--radius-sm); color: var(--ink); cursor: pointer;
     }}
     .cx-form-row {{ display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }}
 
-    /* 日志 */
     .cx-log {{
-      background: #1d1d1f;
-      color: #e5e5ea;
-      border-radius: var(--radius-md);
-      padding: 16px;
-      max-height: 400px;
-      overflow-y: auto;
+      background: #1d1d1f; color: #e5e5ea;
+      border-radius: var(--radius-md); padding: 16px;
+      max-height: 400px; overflow-y: auto;
       font-family: "SF Mono", Menlo, monospace;
-      font-size: 12px;
-      line-height: 1.6;
+      font-size: 12px; line-height: 1.6;
+      scrollbar-color: rgba(255,255,255,.28) transparent;
     }}
+    .cx-log::-webkit-scrollbar-thumb {{ background-color: rgba(255,255,255,.28); }}
+    .cx-log::-webkit-scrollbar-thumb:hover {{ background-color: rgba(255,255,255,.46); }}
     .cx-log-line {{ padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,.06); }}
+
+    @media (min-width: 1800px) and (min-height: 900px) {{
+      .cx-content {{ width: min(1120px, 100% - 96px); padding-top: 32px; }}
+      .cx-card-body {{ padding: 26px; }}
+      .cx-log {{ max-height: min(46vh, 520px); }}
+    }}
+
+    @media (max-width: 800px) {{
+      .cx-header {{ gap: 8px; padding: 8px 14px; }}
+      .cx-back {{ padding: 6px 8px; font-size: 13px; }}
+      .cx-logo {{ gap: 6px; padding-right: 10px; }}
+      .cx-logo-icon {{ width: 24px; height: 24px; }}
+      .cx-title {{ font-size: 14px; }}
+      .cx-content {{ width: min(100% - 24px, 900px); padding: 12px 0 20px; }}
+      .cx-card-body {{ padding: 14px; }}
+      .cx-form-row {{ grid-template-columns: 1fr; gap: 12px; }}
+      .cx-btn-group {{ flex-direction: column; }}
+    }}
+
+    @media (max-height: 620px) {{
+      .cx-content {{ padding-top: 10px; padding-bottom: 10px; }}
+      .cx-card {{ margin-bottom: 12px; }}
+      .cx-card-header {{ padding-top: 12px; padding-bottom: 12px; }}
+      .cx-log {{ max-height: 220px; }}
+    }}
   </style>
 </head>
 <body>
@@ -630,6 +722,29 @@ async def chaoxing_config_update(data: dict[str, Any]):
     return {"status": "ok"}
 
 
+def _find_python_for_subprocess() -> str:
+    """在打包模式下找到可用的 Python 解释器用于子进程"""
+    import shutil
+    import platform
+
+    # 优先使用系统 PATH 中的 python
+    system_python = shutil.which("python") or shutil.which("python3")
+    if system_python:
+        return system_python
+
+    # Windows: 尝试常见安装路径
+    if platform.system() == "Windows":
+        for candidate in [
+            r"C:\Python312\python.exe",
+            r"C:\Python311\python.exe",
+            r"C:\Python310\python.exe",
+        ]:
+            if os.path.exists(candidate):
+                return candidate
+
+    return "python"
+
+
 @chaoxing_router.post("/start")
 async def chaoxing_start():
     if chaoxing.is_running:
@@ -640,8 +755,14 @@ async def chaoxing_start():
     def run_task():
         try:
             script_path = CHAOXING_DIR / "main.py"
+            # 打包后 sys.executable 是 freetime-backend.exe，不是 Python
+            # 需要找到可用的 Python 解释器
+            if getattr(sys, "frozen", False):
+                python_exe = _find_python_for_subprocess()
+            else:
+                python_exe = sys.executable
             chaoxing.process = subprocess.Popen(
-                [sys.executable, str(script_path)],
+                [python_exe, str(script_path)],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
@@ -702,6 +823,7 @@ async def health() -> dict[str, object]:
         "supported_platforms": [
             "抖音", "哔哩哔哩", "YouTube", "快手", "微博", "小红书", "视频号"
         ],
+        "accepted_inputs": ["文章 URL", "视频 URL", "分享文本", "直接输入文字", "本地上传"],
     }
 
 
@@ -716,9 +838,326 @@ async def thumbnail(key: str) -> FileResponse:
     )
 
 
+@app.get("/api/download/thumbnail/{key}", include_in_schema=False)
+async def download_thumbnail(
+    key: str,
+    filename: str = Query(default="thumbnail.jpg"),
+) -> FileResponse:
+    path = thumbnail_store.get_path(key)
+    if not path:
+        raise HTTPException(status_code=404, detail="封面不存在或已过期")
+    safe_name = Path(filename).name or f"thumbnail{path.suffix or '.jpg'}"
+    if not Path(safe_name).suffix:
+        safe_name += path.suffix or ".jpg"
+    return FileResponse(
+        path,
+        filename=safe_name,
+        media_type="application/octet-stream",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.post("/api/download/save-thumbnail/{key}", include_in_schema=False)
+async def save_thumbnail_to_project(
+    key: str, payload: dict[str, Any]
+) -> dict[str, Any]:
+    source = thumbnail_store.get_path(key)
+    if not source:
+        raise HTTPException(status_code=404, detail="封面不存在或已过期")
+    filename = _safe_download_name(
+        str(payload.get("filename") or f"thumbnail{source.suffix or '.jpg'}"),
+        fallback=f"thumbnail{source.suffix or '.jpg'}",
+    )
+    if not Path(filename).suffix:
+        filename += source.suffix or ".jpg"
+    target_dir = _project_download_directory(
+        str(payload.get("project_name") or "未命名项目")
+    )
+    target = target_dir / filename
+    index = 2
+    while target.exists():
+        target = target_dir / f"{Path(filename).stem}-{index}{Path(filename).suffix}"
+        index += 1
+    target.write_bytes(source.read_bytes())
+    return {"saved": 1, "path": str(target), "directory": str(target_dir)}
+
+
+@app.get("/api/remote-image", include_in_schema=False)
+async def remote_image(url: str = Query(..., description="远程图片 URL")):
+    """通过后端携带站点 Referer 代理图片，供浏览器预览。"""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise HTTPException(status_code=400, detail="仅支持 http/https 协议")
+    try:
+        validate_public_url(url)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"资源地址不可访问: {exc}") from exc
+    cache_key = hashlib.sha256(url.encode("utf-8")).hexdigest()
+    cache_path = REMOTE_IMAGE_CACHE / f"{cache_key}.img"
+    meta_path = REMOTE_IMAGE_CACHE / f"{cache_key}.json"
+    if cache_path.is_file() and meta_path.is_file():
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            return FileResponse(
+                cache_path,
+                media_type=str(meta.get("content_type") or "image/jpeg"),
+                headers={"Cache-Control": "public, max-age=86400, immutable"},
+            )
+        except (OSError, json.JSONDecodeError):
+            pass
+    try:
+        async with httpx.AsyncClient(
+            timeout=45.0, follow_redirects=True, headers=_resource_headers(url)
+        ) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+        content_type = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+        if not content_type.startswith("image/"):
+            raise HTTPException(status_code=415, detail="远程资源不是图片")
+        if len(response.content) > 25 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="图片过大")
+        temp_path = cache_path.with_suffix(".tmp")
+        temp_path.write_bytes(response.content)
+        temp_path.replace(cache_path)
+        meta_path.write_text(
+            json.dumps({"content_type": content_type}), encoding="utf-8"
+        )
+        return FileResponse(
+            cache_path,
+            media_type=content_type,
+            headers={"Cache-Control": "public, max-age=86400, immutable"},
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"图片加载失败: {exc}") from exc
+
+
+@app.get("/api/download-settings", include_in_schema=False)
+async def get_download_settings() -> dict[str, str]:
+    return {"directory": str(_download_directory())}
+
+
+@app.put("/api/download-settings", include_in_schema=False)
+async def set_download_settings(payload: dict[str, Any]) -> dict[str, str]:
+    raw = str(payload.get("directory") or "").strip()
+    if not raw:
+        raise HTTPException(status_code=400, detail="下载目录不能为空")
+    target = Path(raw).expanduser()
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+        target = target.resolve()
+        probe = target / ".freetime-write-test"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink()
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail=f"目录不可写: {exc}") from exc
+    DOWNLOAD_SETTINGS_FILE.write_text(
+        json.dumps({"directory": str(target)}, ensure_ascii=False), encoding="utf-8"
+    )
+    return {"directory": str(target)}
+
+
+async def _save_remote_resource(
+    url: str, filename: str, project_name: str | None = None
+) -> Path:
+    validate_public_url(url)
+    target_dir = _project_download_directory(project_name)
+    safe_name = _safe_download_name(filename)
+    cache_key = hashlib.sha256(url.encode("utf-8")).hexdigest()
+    cached_path = REMOTE_IMAGE_CACHE / f"{cache_key}.img"
+    cached_meta = REMOTE_IMAGE_CACHE / f"{cache_key}.json"
+    content_type = ""
+    content: bytes
+    if cached_path.is_file():
+        content = cached_path.read_bytes()
+        try:
+            content_type = str(
+                json.loads(cached_meta.read_text(encoding="utf-8")).get("content_type") or ""
+            )
+        except (OSError, json.JSONDecodeError):
+            content_type = ""
+    else:
+        async with httpx.AsyncClient(
+            timeout=90.0, follow_redirects=True, headers=_resource_headers(url)
+        ) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+        content = response.content
+        content_type = response.headers.get("content-type", "").split(";", 1)[0]
+    if "." not in safe_name:
+        extension = {
+            "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp",
+            "image/gif": ".gif", "video/mp4": ".mp4", "application/pdf": ".pdf",
+        }.get(content_type, ".bin")
+        safe_name += extension
+    target = target_dir / safe_name
+    stem, suffix = target.stem, target.suffix
+    index = 2
+    while target.exists():
+        target = target_dir / f"{stem}-{index}{suffix}"
+        index += 1
+    target.write_bytes(content)
+    return target
+
+
+@app.post("/api/download/save", include_in_schema=False)
+async def save_resource(payload: dict[str, Any]) -> dict[str, Any]:
+    try:
+        path = await _save_remote_resource(
+            str(payload.get("url") or ""),
+            str(payload.get("filename") or "resource"),
+            str(payload.get("project_name") or ""),
+        )
+        return {"saved": 1, "path": str(path), "directory": str(path.parent)}
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"保存资源失败: {exc}") from exc
+
+
+@app.post("/api/download/save-text", include_in_schema=False)
+async def save_text_resource(payload: dict[str, Any]) -> dict[str, Any]:
+    content = str(payload.get("content") or "")
+    if not content.strip():
+        raise HTTPException(status_code=400, detail="没有可导出的全文")
+    if len(content.encode("utf-8")) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="导出全文超过 10 MB")
+    filename = _safe_download_name(
+        str(payload.get("filename") or "完整全文.md"),
+        fallback="完整全文.md",
+    )
+    if Path(filename).suffix.lower() != ".md":
+        filename = f"{Path(filename).stem or '完整全文'}.md"
+    target_dir = _project_download_directory(
+        str(payload.get("project_name") or "未命名项目")
+    )
+    target = target_dir / filename
+    index = 2
+    while target.exists():
+        target = target_dir / f"{Path(filename).stem}-{index}.md"
+        index += 1
+    target.write_text(content, encoding="utf-8")
+    return {"saved": 1, "path": str(target), "directory": str(target_dir)}
+
+
+@app.post("/api/download/batch", include_in_schema=False)
+async def save_resource_batch(payload: dict[str, Any]) -> dict[str, Any]:
+    items = payload.get("items") or []
+    if not isinstance(items, list) or not items:
+        raise HTTPException(status_code=400, detail="没有可下载资源")
+    semaphore = asyncio.Semaphore(4)
+    async def save_one(item: dict[str, Any]):
+        async with semaphore:
+            return await _save_remote_resource(
+                str(item.get("url") or ""),
+                str(item.get("filename") or "resource"),
+                str(payload.get("project_name") or ""),
+            )
+    outputs = await asyncio.gather(
+        *(save_one(item) for item in items[:100]), return_exceptions=True
+    )
+    paths = [str(item) for item in outputs if isinstance(item, Path)]
+    errors = [str(item) for item in outputs if isinstance(item, BaseException)]
+    return {
+        "saved": len(paths), "failed": len(errors), "paths": paths,
+        "directory": str(_project_download_directory(str(payload.get("project_name") or ""))),
+        "errors": errors[:5],
+    }
+
+
+@app.post("/api/download/open-folder", include_in_schema=False)
+async def open_download_folder() -> dict[str, str]:
+    directory = _download_directory()
+    if os.name == "nt":
+        os.startfile(directory)  # type: ignore[attr-defined]
+    else:
+        subprocess.Popen(["xdg-open", str(directory)])
+    return {"directory": str(directory)}
+
+
+@app.get("/api/download", include_in_schema=False)
+async def download_resource(
+    url: str = Query(..., description="资源 URL"),
+    filename: str = Query(default="download", description="下载文件名"),
+):
+    """代理下载外部资源，支持视频、图片等文件"""
+    # 安全验证：只允许 http/https URL
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise HTTPException(status_code=400, detail="仅支持 http/https 协议")
+    try:
+        validate_public_url(url)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"资源地址不可下载: {exc}") from exc
+
+    try:
+        async with httpx.AsyncClient(
+            timeout=60.0,
+            follow_redirects=True,
+            headers={
+                "User-Agent": BROWSER_USER_AGENT,
+                "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.7",
+                "Referer": (
+                    "https://www.xiaohongshu.com/"
+                    if (parsed.hostname or "").lower().endswith("xhscdn.com")
+                    else f"{parsed.scheme}://{parsed.netloc}/"
+                ),
+            },
+        ) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+
+            # 检测 Content-Type 以确定文件扩展名
+            content_type = response.headers.get("content-type", "")
+            if "." not in filename:
+                ext_map = {
+                    "image/jpeg": ".jpg",
+                    "image/png": ".png",
+                    "image/gif": ".gif",
+                    "image/webp": ".webp",
+                    "video/mp4": ".mp4",
+                    "video/webm": ".webm",
+                }
+                for mime, ext in ext_map.items():
+                    if mime in content_type:
+                        filename += ext
+                        break
+                else:
+                    filename += ".bin"
+
+            ascii_name = re.sub(r"[^A-Za-z0-9._-]+", "_", filename).strip("._") or "download"
+            disposition = (
+                f'attachment; filename="{ascii_name}"; '
+                f"filename*=UTF-8''{quote(filename)}"
+            )
+            return StreamingResponse(
+                iter([response.content]),
+                media_type=content_type or "application/octet-stream",
+                headers={
+                    "Content-Disposition": disposition,
+                    "Content-Length": str(len(response.content)),
+                },
+            )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=502, detail=f"远程服务器返回错误: {exc.response.status_code}"
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502, detail=f"下载资源失败: {str(exc)}"
+        ) from exc
+
+
 @app.post("/api/analyze", response_model=AnalyzeResponse)
 async def analyze_content(request: AnalyzeRequest) -> AnalyzeResponse:
     request_started = time.perf_counter()
+    _update_task_job(
+        request.task_id,
+        status="running",
+        progress=8,
+        route={"kind": "url", "url": request.url},
+        error="",
+    )
     input_started = time.perf_counter()
     try:
         url = await asyncio.to_thread(
@@ -727,8 +1166,10 @@ async def analyze_content(request: AnalyzeRequest) -> AnalyzeResponse:
             platform_only=request.input_kind == "platform",
         )
     except UnsafeUrlError as exc:
+        _update_task_job(request.task_id, status="error", progress=100, error=str(exc))
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     input_milliseconds = round((time.perf_counter() - input_started) * 1000)
+    _update_task_job(request.task_id, progress=20)
 
     cache_key = cache.key(f"{request.input_kind}:{url}", request.mode)
     if not request.refresh:
@@ -747,9 +1188,16 @@ async def analyze_content(request: AnalyzeRequest) -> AnalyzeResponse:
                 cached_result.full_pipeline_milliseconds = cached_result.extraction_milliseconds
             if thumbnail_changed:
                 cache.set(cache_key, cached_result.model_dump(mode="json"))
+            _update_task_job(
+                request.task_id,
+                status="success",
+                progress=100,
+                result=cached_result.model_dump(mode="json"),
+            )
             return cached_result
 
     try:
+        _update_task_job(request.task_id, progress=32)
         hostname = (urlparse(url).hostname or "").lower()
         is_platform = any(
             hostname == suffix or hostname.endswith(f".{suffix}")
@@ -767,8 +1215,13 @@ async def analyze_content(request: AnalyzeRequest) -> AnalyzeResponse:
                     raise
                 result = await analyze_article_url(url)
     except PipelineError as exc:
+        _update_task_job(request.task_id, status="error", progress=100, error=str(exc))
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        _update_task_job(request.task_id, status="error", progress=100, error=str(exc))
+        raise
 
+    _update_task_job(request.task_id, progress=86)
     thumbnail_started = time.perf_counter()
     await _stabilize_result_thumbnail(result)
     thumbnail_milliseconds = round(
@@ -784,6 +1237,12 @@ async def analyze_content(request: AnalyzeRequest) -> AnalyzeResponse:
         thumbnail_milliseconds=thumbnail_milliseconds,
     )
     cache.set(cache_key, result.model_dump(mode="json"))
+    _update_task_job(
+        request.task_id,
+        status="success",
+        progress=100,
+        result=result.model_dump(mode="json"),
+    )
     return result
 
 
@@ -792,13 +1251,23 @@ async def analyze_uploaded_content(
     title: str = Form(default="多模态内容提取", max_length=200),
     text: str = Form(default="", max_length=50_000),
     files: list[UploadFile] = File(default=[]),
+    task_id: str = Form(default="", max_length=100),
 ) -> AnalyzeResponse:
     request_started = time.perf_counter()
+    _update_task_job(
+        task_id or None,
+        status="running",
+        progress=15,
+        route={"kind": "text", "text": text[:500]},
+        error="",
+    )
     try:
         result = await analyze_upload_bundle(title.strip(), text, files)
     except PipelineError as exc:
+        _update_task_job(task_id or None, status="error", progress=100, error=str(exc))
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
+        _update_task_job(task_id or None, status="error", progress=100, error=str(exc))
         raise HTTPException(
             status_code=422, detail=f"多模态材料解析失败：{exc}"
         ) from exc
@@ -815,7 +1284,41 @@ async def analyze_uploaded_content(
         input_milliseconds=0,
         thumbnail_milliseconds=thumbnail_milliseconds,
     )
+    _update_task_job(
+        task_id or None,
+        status="success",
+        progress=100,
+        result=result.model_dump(mode="json"),
+    )
     return result
+
+
+@app.get("/api/tasks", include_in_schema=False)
+async def list_task_jobs() -> dict[str, Any]:
+    with TASKS_LOCK:
+        return {"items": list(TASK_JOBS.values())}
+
+
+@app.get("/api/tasks/{task_id}", include_in_schema=False)
+async def get_task_job(task_id: str) -> dict[str, Any]:
+    with TASKS_LOCK:
+        item = TASK_JOBS.get(task_id)
+        if not item:
+            raise HTTPException(status_code=404, detail="任务不存在")
+        return dict(item)
+
+
+@app.delete("/api/tasks/{task_id}", include_in_schema=False)
+async def delete_task_job(task_id: str) -> dict[str, str]:
+    with TASKS_LOCK:
+        item = TASK_JOBS.get(task_id)
+        if not item:
+            raise HTTPException(status_code=404, detail="任务不存在")
+        if item.get("status") not in {"success", "error"}:
+            raise HTTPException(status_code=409, detail="运行中的任务不能删除")
+        del TASK_JOBS[task_id]
+        _write_task_jobs()
+    return {"status": "deleted", "id": task_id}
 
 
 @app.get("/api/videos", response_model=StoredVideoList)

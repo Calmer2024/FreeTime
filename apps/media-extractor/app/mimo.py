@@ -439,12 +439,244 @@ async def structure_information(
     return result
 
 
+READING_RESULT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "summary": {"type": "string"},
+        "key_points": {"type": "array", "items": {"type": "string"}},
+        "topics": {"type": "array", "items": {"type": "string"}},
+        "article": {"type": "string"},
+    },
+    "required": ["summary", "key_points", "topics", "article"],
+    "additionalProperties": False,
+}
+
+
+async def _complete_reading_payload(
+    payload: dict[str, Any], timeout: float
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    data = await _completion(payload, timeout=timeout)
+    content, finish_reason = _choice_content(data)
+    if finish_reason != "stop":
+        raise MimoError(
+            f"MiMo 文章整理生成未完成（{finish_reason or 'unknown'}）"
+        )
+    return _parse_json_content(content), data.get("usage") or {}
+
+
+async def compose_readable_result(
+    source_text: str, metadata: dict[str, Any]
+) -> dict[str, Any]:
+    """Turn all extracted evidence into a readable article and resource audit."""
+    prompt = f"""
+基于输入的全部字幕、口播、OCR 和发布上下文，输出严格 JSON。
+字段必须且只能按 summary、key_points、topics、article 的顺序输出。
+
+要求：
+1. summary 为简洁概括；key_points 保留最重要的可执行信息；topics 为短标签。
+2. article 是“完整全文”而不是摘要或提纲。必须保留全部有意义的事实、论证过程、步骤、例子、数字、限制条件、观点和结论；只删除重复口头禅、时间戳和机械字幕断句，不得为了简短而压缩信息。
+3. article 必须使用 Markdown：以“# 文章标题”开头，使用“## 小节标题”组织逻辑层次；合理使用自然段、列表、引用和强调。不得输出“发布上下文、语音字幕、OCR”等处理标签。
+4. 保持原文叙事顺序和因果关系，补齐仅由字幕断句造成的语法连接，使文章连贯但不增加外部事实。对于较长原文，article 应接近整理前有效正文的信息量，而不是只保留数段概括。
+
+标题：{metadata.get("title", "")}
+作者：{metadata.get("uploader", "")}
+来源：{metadata.get("webpage_url", "")}
+内容类型：{metadata.get("content_type", "")}
+
+完整提取信息：
+{source_text[:settings.max_transcript_chars]}
+""".strip()
+    response_format = {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "drillknowledge_reading_result_v1",
+            "strict": True,
+            "schema": READING_RESULT_SCHEMA,
+        },
+    }
+    payload = {
+        "model": settings.summary_model,
+        "messages": [
+            {
+                "role": "system",
+                "content": "你是严谨的中文编辑与内容价值分析助手，只依据输入整理文章。",
+            },
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0.2,
+        "max_completion_tokens": 7000,
+        "thinking": {"type": "disabled"},
+        "response_format": response_format,
+    }
+    try:
+        result, usage = await _complete_reading_payload(payload, timeout=180)
+    except MimoError as first_error:
+        retry_payload = {
+            **payload,
+            "messages": [
+                *payload["messages"],
+                {
+                    "role": "user",
+                    "content": (
+                        f"上次生成未完成：{first_error}。请重新生成整个 JSON；"
+                        "严格按 summary、key_points、topics、article 顺序，"
+                        "不得增加字段。"
+                    ),
+                },
+            ],
+        }
+        try:
+            result, usage = await _complete_reading_payload(
+                retry_payload, timeout=240
+            )
+        except MimoError as retry_error:
+            raise MimoError(
+                f"MiMo 文章整理连续失败：{retry_error}"
+            ) from retry_error
+    issues = _article_quality_issues(source_text, str(result.get("article") or ""))
+    if issues:
+        repair_payload = {
+            **payload,
+            "messages": [
+                *payload["messages"],
+                {"role": "assistant", "content": json.dumps(result, ensure_ascii=False)},
+                {
+                    "role": "user",
+                    "content": (
+                        "当前 article 不符合完整全文要求，必须重新生成整个 JSON。"
+                        f"问题：{'；'.join(issues)}。"
+                        "重点重写 article：完整保留原文有效信息，以 # 标题和多个 ## 小节组织，"
+                        "不得缩写成摘要；其余字段保持准确。"
+                    ),
+                },
+            ],
+        }
+        try:
+            candidate, repaired_usage = await _complete_reading_payload(
+                repair_payload, timeout=240
+            )
+            if len(_article_quality_issues(
+                source_text, str(candidate.get("article") or "")
+            )) < len(issues):
+                result = candidate
+            usage = _merge_usage(usage, repaired_usage)
+        except MimoError:
+            pass
+    preliminary = result.get("opinion_assessment") or {}
+    try:
+        assessment = await assess_opinion_with_web_search(
+            source_text, metadata, preliminary
+        )
+        assessment_usage = assessment.pop("_usage", {})
+        result["opinion_assessment"] = assessment
+        usage = _merge_usage(usage, assessment_usage)
+    except MimoError:
+        pass
+    result["_usage"] = usage
+    return result
+
+
+def _article_quality_issues(source_text: str, article: str) -> list[str]:
+    source = re.sub(r"\[[^\]]+\]|\s+", "", source_text)
+    rendered = re.sub(r"[#*_>\-]|\s+", "", article)
+    issues: list[str] = []
+    if len(source) >= 600 and len(rendered) < min(5000, int(len(source) * 0.55)):
+        issues.append("正文相对原文过度压缩")
+    if len(source) >= 500 and not re.search(r"(?m)^#\s+\S+", article):
+        issues.append("缺少 Markdown 文章标题")
+    if len(source) >= 900 and len(re.findall(r"(?m)^##\s+\S+", article)) < 2:
+        issues.append("缺少足够的小节结构")
+    if len(article.strip()) < 120:
+        issues.append("正文过短")
+    return issues
+
+
+async def assess_opinion_with_web_search(
+    source_text: str,
+    metadata: dict[str, Any],
+    preliminary: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Use MiMo native web search when external evidence is needed."""
+    prompt = f"""
+评估下面内容介绍的观点、产品、工具或方法是否实际有用，是否存在营销夸大或制造焦虑。
+先基于原文判断；当涉及可外部核实的产品能力、价格、公开数据、研究结论、项目状态，
+或原文证据不足时，使用联网搜索核验。不要为了搜索而搜索。
+
+输出且只输出 JSON：
+{{
+  "verdict":"useful|mixed|marketing_heavy|insufficient_evidence",
+  "promotional_risk":"low|medium|high|unknown",
+  "usefulness":"综合判断与适用边界",
+  "reasons":["判断依据"],
+  "advice":["给读者的具体建议"],
+  "sources":["实际参考的完整 http/https URL"],
+  "web_searched":true
+}}
+没有联网时 sources=[] 且 web_searched=false。不得伪造来源。
+
+标题：{metadata.get("title", "")}
+来源：{metadata.get("webpage_url", "")}
+初步判断：{json.dumps(preliminary or {}, ensure_ascii=False)}
+内容：
+{source_text[:settings.max_transcript_chars]}
+""".strip()
+    payload = {
+        "model": settings.summary_model,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "你是审慎的内容价值评估助手。结论必须区分事实、推断和建议；"
+                    "资料不足时使用提供的联网搜索工具。"
+                ),
+            },
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0.1,
+        "max_completion_tokens": 2400,
+        "thinking": {"type": "disabled"},
+        "tools": [
+            {"type": "web_search", "max_keyword": 3, "force_search": False}
+        ],
+    }
+    data = await _completion(payload, timeout=240)
+    content, finish_reason = _choice_content(data)
+    if finish_reason == "length":
+        raise MimoError("观点联网判断达到长度上限")
+    result = _parse_json_content(content)
+    serialized = json.dumps(data, ensure_ascii=False)
+    discovered = re.findall(r"https?://[^\s\"'<>\\]+", serialized)
+    sources = [
+        str(item) for item in result.get("sources") or []
+        if str(item).startswith(("http://", "https://"))
+    ]
+    sources.extend(url.rstrip(".,;)]}") for url in discovered)
+    result["sources"] = list(dict.fromkeys(sources))[:8]
+    result["web_searched"] = bool(result.get("web_searched") or discovered)
+    result["_usage"] = data.get("usage") or {}
+    return result
+
+
 async def analyze_keyframes(
     frames: list[tuple[int, float, Path]],
     metadata: dict[str, Any],
+    *,
+    ocr_only: bool = False,
 ) -> dict[str, Any]:
-    """Run OCR and grounded visual observation over adaptive keyframes."""
-    prompt = """
+    """Run OCR, optionally without visual observation for image posts."""
+    prompt = ("""
+逐张处理按顺序提供的图片。只执行 OCR：
+1. 原样提取图片中有事实意义的文字，保留数字、日期、机构、地点和标点；
+2. 不描述构图、人物、物体、环境、风格或事件，不进行画面观察；
+3. 看不清的文字不要猜测，不要补全被遮挡内容；
+4. 没有文字时返回空数组。
+
+输出纯 JSON：
+{"frames":[{"frame_index":1,"timestamp_seconds":0,
+"ocr_text":["图片原文"],"visual_observations":[],
+"frame_type":"image_slide"}],
+"summary":"OCR覆盖概括","coverage_note":"OCR覆盖说明"}
+""".strip() if ocr_only else """
 逐张分析按时间顺序提供的视频关键帧。执行：
 1. 原样提取有事实意义的屏幕文字（OCR），保留数字、日期、机构、地点；
 2. 描述画面中直接可观察的事件，不推测地点、时间、身份或因果；
@@ -456,7 +688,7 @@ async def analyze_keyframes(
 "ocr_text":["屏幕原文"],"visual_observations":["直接观察"],
 "frame_type":"first_frame"}],
 "summary":"关键帧视觉概括","coverage_note":"OCR和画面覆盖说明"}
-""".strip()
+""".strip())
     content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
     for index, timestamp, path in frames:
         encoded = base64.b64encode(path.read_bytes()).decode("ascii")
@@ -482,8 +714,9 @@ async def analyze_keyframes(
             {
                 "role": "system",
                 "content": (
-                    "你是 MiMo Trust 的关键帧 OCR 与视觉证据提取模块。"
-                    "只报告可直接观察的信息。"
+                    "你是 MiMo Trust 的图片 OCR 模块。只提取图片文字，禁止画面观察。"
+                    if ocr_only
+                    else "你是 MiMo Trust 的关键帧 OCR 与视觉证据提取模块。只报告可直接观察的信息。"
                 ),
             },
             {

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from app.config import settings
+from app.storage import cache_root
 
 
 class DouyinCookieError(RuntimeError):
@@ -16,7 +17,7 @@ class DouyinCookieError(RuntimeError):
 
 
 _PROCESS_REFRESH_LOCK = threading.Lock()
-_CACHE_DIR = Path(".cache")
+_CACHE_DIR = cache_root()
 _COOKIE_FILE = _CACHE_DIR / "douyin-dev-cookies.txt"
 _USER_AGENT_FILE = _CACHE_DIR / "douyin-dev-user-agent.txt"
 _REFRESH_LOCK_FILE = _CACHE_DIR / "douyin-cookie-refresh.lock"

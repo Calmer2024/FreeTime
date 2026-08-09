@@ -28,6 +28,7 @@ class AnalyzeRequest(BaseModel):
     input_kind: Literal["auto", "article", "platform"] = "auto"
     mode: Literal["auto", "visual"] = "auto"
     refresh: bool = False
+    task_id: str | None = Field(default=None, max_length=100)
 
 
 class VideoMetadata(BaseModel):
@@ -93,6 +94,26 @@ class CostStep(BaseModel):
     reason: str
 
 
+class ExtractedResource(BaseModel):
+    title: str = "相关资源"
+    url: str
+    kind: Literal["website", "github", "image", "file", "other"] = "other"
+    description: str = ""
+    downloadable: bool = False
+
+
+class OpinionAssessment(BaseModel):
+    verdict: Literal[
+        "useful", "mixed", "marketing_heavy", "insufficient_evidence"
+    ] = "insufficient_evidence"
+    promotional_risk: Literal["low", "medium", "high", "unknown"] = "unknown"
+    usefulness: str = "信息不足，暂无法判断实际价值。"
+    reasons: list[str] = Field(default_factory=list)
+    advice: list[str] = Field(default_factory=list)
+    sources: list[str] = Field(default_factory=list)
+    web_searched: bool = False
+
+
 class ExtractionPlan(BaseModel):
     video_type: Literal[
         "speech_dominant",
@@ -150,6 +171,12 @@ class AnalyzeResponse(BaseModel):
     structured_input_chars: int = 0
     structured_input_truncated: bool = False
     cleaned_article: str = ""
+    original_images: list[str] = Field(default_factory=list)
+    image_only: bool = False
+    resources: list[ExtractedResource] = Field(default_factory=list)
+    opinion_assessment: OpinionAssessment | None = None
+    # Historical verification payloads are retained when reading old cache entries.
+    verification: dict[str, object] | None = None
     timings: list[StageTiming] = Field(default_factory=list)
     orchestration_timings: list[StageTiming] = Field(default_factory=list)
     extraction_milliseconds: int = 0

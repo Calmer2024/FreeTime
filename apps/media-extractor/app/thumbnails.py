@@ -9,6 +9,7 @@ from urllib.parse import urljoin, urlparse
 import httpx
 
 from app.security import BROWSER_USER_AGENT, REDIRECT_LIMIT, validate_public_url
+from app.storage import cache_root
 
 
 MAX_THUMBNAIL_BYTES = 10 * 1024 * 1024
@@ -146,4 +147,5 @@ class ThumbnailStore:
         )
 
 
-thumbnail_store = ThumbnailStore(Path(".cache") / "thumbnails")
+thumbnail_store = ThumbnailStore(cache_root() / "thumbnails")
+from app.storage import cache_root
