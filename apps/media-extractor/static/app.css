@@ -827,6 +827,12 @@ details[open] .summary-chevron { transform: rotate(180deg); }
 .task-queue-heading > div { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .task-queue-heading strong { font-size: 12px; }
 .task-queue-summary { overflow: hidden; color: var(--ink-tertiary); font: 600 10px/1 var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+.task-queue-clear-actions { display: flex; align-items: center; justify-content: flex-end; gap: 4px; flex: 0 0 auto; }
+.task-clear, .task-clear-confirm, .task-clear-cancel { width: 26px; height: 26px; display: inline-grid; place-items: center; padding: 0; border: 1px solid transparent; border-radius: 7px; color: var(--ink-tertiary); background: transparent; cursor: pointer; }
+.task-clear:hover, .task-clear-cancel:hover { color: var(--danger); background: var(--danger-soft); }
+.task-clear-confirm { color: #3f6c52; background: #edf4ef; }
+.task-clear-confirm:hover { color: #2f5941; }
+.task-queue-clear-actions svg { width: 14px; height: 14px; }
 .task-list { display: grid; gap: 7px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) transparent; }
 .task-list::-webkit-scrollbar { width: 6px; }
 .task-list::-webkit-scrollbar-track { background: transparent; }

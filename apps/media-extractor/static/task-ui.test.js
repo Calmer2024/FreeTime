@@ -10,6 +10,11 @@ const {
   taskErrorMessage,
   buildMarkdownExportPayload,
   taskStateIndicator,
+  canClearCompletedTasks,
+  historyScrollTarget,
+  withoutCompletedTasks,
+  taskClearActionKey,
+  historyItemsSignature,
 } = require("./task-ui.js");
 
 test("only the first completion claims automatic result presentation", () => {
@@ -156,4 +161,42 @@ test("running task uses a stable css spinner instead of a replaced svg", () => {
     '<span class="task-spinner" aria-hidden="true"></span>'
   );
   assert.match(taskStateIndicator("success"), /data-lucide="circle-check"/);
+});
+
+test("bulk cleanup is available only when terminal tasks exist", () => {
+  assert.equal(canClearCompletedTasks([{ status: "running" }, { status: "pending" }]), false);
+  assert.equal(canClearCompletedTasks([{ status: "running" }, { status: "success" }]), true);
+  assert.equal(canClearCompletedTasks([{ status: "error" }]), true);
+});
+
+test("history refresh preserves and bounds scroll unless reset is explicit", () => {
+  assert.equal(historyScrollTarget(240, 1000, 300, false), 240);
+  assert.equal(historyScrollTarget(900, 1000, 300, false), 700);
+  assert.equal(historyScrollTarget(240, 1000, 300, true), 0);
+});
+
+test("bulk cleanup also removes terminal tasks that only exist locally", () => {
+  assert.deepEqual(withoutCompletedTasks([
+    { id: "running", status: "running" },
+    { id: "done", status: "success" },
+    { id: "failed", status: "error" },
+    { id: "pending", status: "pending" },
+  ]).map(task => task.id), ["running", "pending"]);
+});
+
+test("task cleanup control key changes only with interaction state", () => {
+  assert.equal(taskClearActionKey({ completed: 2 }, false, ""), "ready:");
+  assert.equal(taskClearActionKey({ completed: 9 }, false, ""), "ready:");
+  assert.equal(taskClearActionKey({ completed: 2 }, true, ""), "confirm");
+  assert.equal(taskClearActionKey({ completed: 0 }, false, ""), "hidden");
+});
+
+test("history signature changes only when rendered history changes", () => {
+  const items = [{ cache_key: "a", created_at: 10, expired: false }];
+  assert.equal(historyItemsSignature(items), "a:10:false");
+  assert.equal(historyItemsSignature([...items]), "a:10:false");
+  assert.equal(
+    historyItemsSignature([{ cache_key: "a", created_at: 11, expired: false }]),
+    "a:11:false",
+  );
 });

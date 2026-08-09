@@ -13,6 +13,8 @@ let taskRecords = [];
 const TASK_STORAGE_KEY = "drillknowledge.tasks.v2";
 let taskPollTimer = null;
 let taskDeleteConfirmationId = null;
+let taskClearConfirmation = false;
+let taskClearError = "";
 const taskPresentation = DrillTaskUi.createResultPresentation();
 
 refreshIcons();
@@ -238,6 +240,7 @@ function renderTaskQueue() {
   control.hidden = false;
   const labels = { pending: "排队中", running: "处理中", success: "已完成", error: "失败" };
   $("task-queue-summary").textContent = `${summary.active ? `${summary.active} 进行中 · ` : ""}${summary.completed}/${summary.total} 已结束`;
+  renderTaskClearActions(summary);
   const badge = $("task-active-badge");
   badge.hidden = summary.active === 0;
   badge.textContent = summary.active > 9 ? "9+" : String(summary.active);
@@ -245,7 +248,7 @@ function renderTaskQueue() {
   trigger.classList.toggle("has-active-tasks", summary.active > 0);
   const signature = taskRecords.map(task => [
     task.id, task.status, Boolean(task.result), task.error || "", task.deleteError || ""
-  ].join(":")).join("|") + `|confirm:${taskDeleteConfirmationId || ""}`;
+  ].join(":")).join("|") + `|confirm:${taskDeleteConfirmationId || ""}|clear:${taskClearConfirmation}`;
   if (list.dataset.signature === signature) {
     updateTaskMetrics();
     return;
@@ -292,6 +295,59 @@ function renderTaskQueue() {
     deleteTaskRecord(button.dataset.taskDeleteConfirmId);
   }));
   refreshIcons();
+}
+
+function renderTaskClearActions(summary) {
+  const slot = $("task-queue-clear-actions");
+  if (!slot) return;
+  const canClear = DrillTaskUi.canClearCompletedTasks(taskRecords);
+  const actionKey = DrillTaskUi.taskClearActionKey(
+    summary,
+    taskClearConfirmation,
+    taskClearError,
+  );
+  if (slot.dataset.state === actionKey) return;
+  slot.dataset.state = actionKey;
+  if (!canClear) {
+    taskClearConfirmation = false;
+    taskClearError = "";
+    slot.innerHTML = "";
+    return;
+  }
+  if (taskClearConfirmation) {
+    slot.innerHTML = `<button class="task-clear-confirm" type="button" aria-label="确认清理已结束任务" title="确认清理"><i data-lucide="check" aria-hidden="true"></i></button><button class="task-clear-cancel" type="button" aria-label="取消清理" title="取消"><i data-lucide="x" aria-hidden="true"></i></button>`;
+    slot.querySelector(".task-clear-confirm")?.addEventListener("click", clearCompletedTasks);
+    slot.querySelector(".task-clear-cancel")?.addEventListener("click", () => {
+      taskClearConfirmation = false;
+      renderTaskQueue();
+    });
+  } else {
+    slot.innerHTML = `<button class="task-clear" type="button" aria-label="一键清理已结束任务" title="${escapeAttribute(taskClearError || "清理已结束任务")}"><i data-lucide="trash-2" aria-hidden="true"></i></button>`;
+    slot.querySelector(".task-clear")?.addEventListener("click", () => {
+      taskClearConfirmation = true;
+      taskClearError = "";
+      renderTaskQueue();
+    });
+  }
+  refreshIcons();
+}
+
+async function clearCompletedTasks() {
+  try {
+    const response = await fetch("/api/tasks/completed", { method: "DELETE" });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || "清理任务失败");
+    taskRecords = DrillTaskUi.withoutCompletedTasks(taskRecords);
+    taskDeleteConfirmationId = null;
+    taskClearConfirmation = false;
+    taskClearError = "";
+    persistTasks();
+    renderTaskQueue();
+  } catch (error) {
+    taskClearConfirmation = false;
+    taskClearError = error.message || "清理任务失败";
+    renderTaskQueue();
+  }
 }
 
 function setTaskQueueExpanded(expanded) {
@@ -652,18 +708,28 @@ function formatDuration(milliseconds) {
   return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
 }
 
-async function loadHistory() {
+async function loadHistory({ resetScroll = false } = {}) {
+  const list = $("history-list");
+  const previousScrollTop = list.scrollTop;
   try {
     const response = await fetch("/api/videos");
     const data = await response.json();
     if (!response.ok) throw new Error(data.detail || "读取失败");
+    const historySignature = DrillTaskUi.historyItemsSignature(data.items);
     if (!data.items.length) {
       historyByKey = {};
-      $("history-list").innerHTML = '<div class="history-empty">暂无提取记录</div>';
+      list.dataset.signature = historySignature;
+      list.innerHTML = '<div class="history-empty">暂无提取记录</div>';
+      list.scrollTop = 0;
       return;
     }
     historyByKey = Object.fromEntries(data.items.map(item => [item.cache_key, item.result]));
-    $("history-list").innerHTML = data.items.map(item => {
+    if (list.dataset.signature === historySignature) {
+      if (resetScroll) list.scrollTop = 0;
+      return;
+    }
+    list.dataset.signature = historySignature;
+    list.innerHTML = data.items.map(item => {
       const result = item.result;
       const date = new Date(item.created_at).toLocaleString("zh-CN");
       const coverage = result.coverage || {};
@@ -679,10 +745,15 @@ async function loadHistory() {
         </div>
       </div>`;
     }).join("");
-    $("history-list").scrollTop = 0;
+    list.scrollTop = DrillTaskUi.historyScrollTarget(
+      previousScrollTop,
+      list.scrollHeight,
+      list.clientHeight,
+      resetScroll,
+    );
     refreshIcons();
   } catch (error) {
-    $("history-list").innerHTML = `<div class="history-empty">${escapeHtml(error.message)}</div>`;
+    list.innerHTML = `<div class="history-empty">${escapeHtml(error.message)}</div>`;
   }
 }
 
@@ -715,7 +786,7 @@ $("clear-history").addEventListener("click", async () => {
   if (response.ok) {
     $("result").classList.remove("active");
     $("workbench").hidden = true;
-    loadHistory();
+    loadHistory({ resetScroll: true });
   }
 });
 

@@ -40,6 +40,34 @@
     return { active, completed, total: records.length, visible: records.length > 0 };
   }
 
+  function canClearCompletedTasks(tasks) {
+    return (Array.isArray(tasks) ? tasks : []).some(isTerminalTask);
+  }
+
+  function withoutCompletedTasks(tasks) {
+    return (Array.isArray(tasks) ? tasks : []).filter(task => !isTerminalTask(task));
+  }
+
+  function taskClearActionKey(summary, confirming = false, error = "") {
+    if (!Number(summary?.completed || 0)) return "hidden";
+    if (confirming) return "confirm";
+    return `ready:${String(error || "")}`;
+  }
+
+  function historyScrollTarget(previous, scrollHeight, clientHeight, reset = false) {
+    if (reset) return 0;
+    const maximum = Math.max(0, Number(scrollHeight || 0) - Number(clientHeight || 0));
+    return Math.min(Math.max(0, Number(previous || 0)), maximum);
+  }
+
+  function historyItemsSignature(items) {
+    return (Array.isArray(items) ? items : []).map(item => [
+      item?.cache_key || "",
+      item?.created_at || "",
+      Boolean(item?.expired),
+    ].join(":")).join("|");
+  }
+
   function taskActionState(task, confirmationTaskId) {
     const canDelete = isTerminalTask(task);
     return {
@@ -108,6 +136,11 @@
     createResultPresentation,
     isTerminalTask,
     summarizeTasks,
+    canClearCompletedTasks,
+    withoutCompletedTasks,
+    taskClearActionKey,
+    historyScrollTarget,
+    historyItemsSignature,
     taskActionState,
     taskErrorMessage,
     buildMarkdownExportPayload,
