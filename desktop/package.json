@@ -1,0 +1,62 @@
+{
+  "name": "freetime",
+  "version": "1.0.15",
+  "description": "FreeTime - 节省时间的应用工具箱",
+  "main": "main.js",
+  "author": "Calmer2024",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test backend-paths.test.js window-layout.test.js && python -m unittest build_test.py",
+    "build": "electron-builder --win",
+    "build:portable": "electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.freetime.app",
+    "productName": "FreeTime",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "backend-paths.js",
+      "window-layout.js"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/freetime-backend",
+        "to": "."
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "icon.ico",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "FreeTime",
+      "installerIcon": "icon.ico",
+      "uninstallerIcon": "icon.ico",
+      "installerHeaderIcon": "icon.ico",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true
+    }
+  }
+}
