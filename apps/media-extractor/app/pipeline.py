@@ -1336,7 +1336,7 @@ def _local_structured_information(
     case_hash = hashlib.sha256(webpage_url.encode("utf-8")).hexdigest()[:12]
     return StructuredInformation(
         case_id=f"case-{case_hash}",
-        content_topic=title.strip() or "未识别内容主题",
+        content_topic=(title.strip() or "未识别内容主题")[:200],
         atomic_claims=[],
         implicit_opinions=[],
     )

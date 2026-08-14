@@ -21,7 +21,7 @@ from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.cache import ResultCache
-from app.config import settings
+from app.config import apply_saved_settings, settings
 from app.models import (
     AnalyzeRequest,
     AnalyzeResponse,
@@ -75,6 +75,16 @@ REMOTE_IMAGE_CACHE = DATA_DIR / ".cache" / "remote-images"
 REMOTE_IMAGE_CACHE.mkdir(parents=True, exist_ok=True)
 
 
+def _extractor_asset_version() -> str:
+    digest = hashlib.sha256()
+    for filename in ("app.css", "task-ui.js", "app.js"):
+        digest.update((STATIC_DIR / filename).read_bytes())
+    return digest.hexdigest()[:12]
+
+
+EXTRACTOR_ASSET_VERSION = _extractor_asset_version()
+
+
 def _load_task_jobs() -> dict[str, dict[str, Any]]:
     try:
         payload = json.loads(TASKS_FILE.read_text(encoding="utf-8"))
@@ -84,6 +94,33 @@ def _load_task_jobs() -> dict[str, dict[str, Any]]:
 
 
 TASK_JOBS: dict[str, dict[str, Any]] = _load_task_jobs()
+
+
+def _expire_stale_task_jobs(now: float | None = None) -> int:
+    """Turn abandoned persisted jobs into terminal records.
+
+    A backend restart cannot resume in-process extraction work, and a request that
+    stops updating beyond the lease must not remain "running" forever.
+    """
+    current_time = time.time() if now is None else now
+    expired = 0
+    with TASKS_LOCK:
+        for item in TASK_JOBS.values():
+            if item.get("status") not in {"pending", "running"}:
+                continue
+            updated_at = float(item.get("updated_at") or item.get("started_at") or 0)
+            if current_time - updated_at <= settings.task_stale_seconds:
+                continue
+            item.update({
+                "status": "error",
+                "progress": 100,
+                "error": "任务长时间无响应，已自动结束，请重试",
+                "updated_at": current_time,
+            })
+            expired += 1
+        if expired:
+            _write_task_jobs()
+    return expired
 
 
 def _write_task_jobs() -> None:
@@ -124,6 +161,12 @@ def _download_directory() -> Path:
         target = Path(configured).expanduser() if configured else default
     except (OSError, json.JSONDecodeError):
         target = default
+    target.mkdir(parents=True, exist_ok=True)
+    return target.resolve()
+
+
+def _documents_download_directory() -> Path:
+    target = _download_directory() / "docs"
     target.mkdir(parents=True, exist_ok=True)
     return target.resolve()
 
@@ -221,22 +264,6 @@ async def _stabilize_result_thumbnail(result: AnalyzeResponse) -> bool:
     return result.metadata.thumbnail != original
 
 
-async def _stabilize_payload_thumbnail(payload: dict[str, object]) -> None:
-    metadata = payload.get("metadata")
-    if not isinstance(metadata, dict):
-        return
-    original = metadata.get("thumbnail")
-    if not isinstance(original, str) or not original or original.startswith(
-        "/api/thumbnails/"
-    ):
-        return
-    metadata["thumbnail"] = await asyncio.to_thread(
-        thumbnail_store.materialize,
-        original,
-        str(metadata.get("webpage_url") or ""),
-    )
-
-
 def _visible_extraction_milliseconds(result: AnalyzeResponse) -> int:
     return sum(max(0, int(item.milliseconds)) for item in result.timings)
 
@@ -314,6 +341,9 @@ def save_settings(settings: dict) -> None:
     SETTINGS_FILE.write_text(json.dumps(settings, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+apply_saved_settings(load_settings())
+
+
 @app.get("/", include_in_schema=False)
 async def portal() -> HTMLResponse:
     """FreeTime 主门户入口"""
@@ -331,13 +361,16 @@ async def get_settings():
 async def update_settings(data: dict):
     """更新全局设置"""
     save_settings(data)
+    apply_saved_settings(data)
     return {"status": "ok"}
 
 
 @app.get("/extractor", include_in_schema=False)
 async def extractor_index() -> HTMLResponse:
     """流媒体内容提取器入口"""
-    content = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    content = (STATIC_DIR / "index.html").read_text(encoding="utf-8").replace(
+        "__ASSET_VERSION__", EXTRACTOR_ASSET_VERSION
+    )
     return HTMLResponse(content=content, headers={"Cache-Control": "no-store"})
 
 
@@ -889,7 +922,7 @@ async def remote_image(url: str = Query(..., description="远程图片 URL")):
     if parsed.scheme not in ("http", "https"):
         raise HTTPException(status_code=400, detail="仅支持 http/https 协议")
     try:
-        validate_public_url(url)
+        await asyncio.to_thread(validate_public_url, url)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"资源地址不可访问: {exc}") from exc
     cache_key = hashlib.sha256(url.encode("utf-8")).hexdigest()
@@ -917,10 +950,12 @@ async def remote_image(url: str = Query(..., description="远程图片 URL")):
         if len(response.content) > 25 * 1024 * 1024:
             raise HTTPException(status_code=413, detail="图片过大")
         temp_path = cache_path.with_suffix(".tmp")
-        temp_path.write_bytes(response.content)
-        temp_path.replace(cache_path)
-        meta_path.write_text(
-            json.dumps({"content_type": content_type}), encoding="utf-8"
+        await asyncio.to_thread(temp_path.write_bytes, response.content)
+        await asyncio.to_thread(temp_path.replace, cache_path)
+        await asyncio.to_thread(
+            meta_path.write_text,
+            json.dumps({"content_type": content_type}),
+            encoding="utf-8",
         )
         return FileResponse(
             cache_path,
@@ -961,8 +996,7 @@ async def set_download_settings(payload: dict[str, Any]) -> dict[str, str]:
 async def _save_remote_resource(
     url: str, filename: str, project_name: str | None = None
 ) -> Path:
-    validate_public_url(url)
-    target_dir = _project_download_directory(project_name)
+    await asyncio.to_thread(validate_public_url, url)
     safe_name = _safe_download_name(filename)
     cache_key = hashlib.sha256(url.encode("utf-8")).hexdigest()
     cached_path = REMOTE_IMAGE_CACHE / f"{cache_key}.img"
@@ -970,10 +1004,10 @@ async def _save_remote_resource(
     content_type = ""
     content: bytes
     if cached_path.is_file():
-        content = cached_path.read_bytes()
+        content = await asyncio.to_thread(cached_path.read_bytes)
         try:
             content_type = str(
-                json.loads(cached_meta.read_text(encoding="utf-8")).get("content_type") or ""
+                json.loads(await asyncio.to_thread(cached_meta.read_text, encoding="utf-8")).get("content_type") or ""
             )
         except (OSError, json.JSONDecodeError):
             content_type = ""
@@ -991,13 +1025,19 @@ async def _save_remote_resource(
             "image/gif": ".gif", "video/mp4": ".mp4", "application/pdf": ".pdf",
         }.get(content_type, ".bin")
         safe_name += extension
+    document_extensions = {".md", ".txt", ".pdf", ".doc", ".docx", ".rtf", ".odt"}
+    target_dir = (
+        _documents_download_directory()
+        if Path(safe_name).suffix.lower() in document_extensions
+        else _project_download_directory(project_name)
+    )
     target = target_dir / safe_name
     stem, suffix = target.stem, target.suffix
     index = 2
     while target.exists():
         target = target_dir / f"{stem}-{index}{suffix}"
         index += 1
-    target.write_bytes(content)
+    await asyncio.to_thread(target.write_bytes, content)
     return target
 
 
@@ -1027,15 +1067,13 @@ async def save_text_resource(payload: dict[str, Any]) -> dict[str, Any]:
     )
     if Path(filename).suffix.lower() != ".md":
         filename = f"{Path(filename).stem or '完整全文'}.md"
-    target_dir = _project_download_directory(
-        str(payload.get("project_name") or "未命名项目")
-    )
+    target_dir = _documents_download_directory()
     target = target_dir / filename
     index = 2
     while target.exists():
         target = target_dir / f"{Path(filename).stem}-{index}.md"
         index += 1
-    target.write_text(content, encoding="utf-8")
+    await asyncio.to_thread(target.write_text, content, encoding="utf-8")
     return {"saved": 1, "path": str(target), "directory": str(target_dir)}
 
 
@@ -1204,22 +1242,25 @@ async def analyze_content(request: AnalyzeRequest) -> AnalyzeResponse:
             for suffix in ALLOWED_HOST_SUFFIXES
         )
         if request.input_kind == "article" or not is_platform:
-            result = await analyze_article_url(url)
+            result = await asyncio.wait_for(
+                analyze_article_url(url), timeout=settings.task_timeout_seconds
+            )
         else:
-            try:
-                result = await analyze(url, request.mode)
-            except PipelineError:
-                if request.input_kind == "platform" or hostname.endswith(
-                    ("kuaishou.com", "gifshow.com")
-                ):
-                    raise
-                result = await analyze_article_url(url)
+            result = await asyncio.wait_for(
+                analyze(url, request.mode), timeout=settings.task_timeout_seconds
+            )
+    except asyncio.TimeoutError as exc:
+        message = "任务处理超时，已自动结束，请重试或切换提取模式"
+        _update_task_job(request.task_id, status="error", progress=100, error=message)
+        raise HTTPException(status_code=504, detail=message) from exc
     except PipelineError as exc:
         _update_task_job(request.task_id, status="error", progress=100, error=str(exc))
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
         _update_task_job(request.task_id, status="error", progress=100, error=str(exc))
-        raise
+        raise HTTPException(
+            status_code=500, detail=f"内容提取失败：{exc}"
+        ) from exc
 
     _update_task_job(request.task_id, progress=86)
     thumbnail_started = time.perf_counter()
@@ -1262,7 +1303,14 @@ async def analyze_uploaded_content(
         error="",
     )
     try:
-        result = await analyze_upload_bundle(title.strip(), text, files)
+        result = await asyncio.wait_for(
+            analyze_upload_bundle(title.strip(), text, files),
+            timeout=settings.task_timeout_seconds,
+        )
+    except asyncio.TimeoutError as exc:
+        message = "任务处理超时，已自动结束，请重试"
+        _update_task_job(task_id or None, status="error", progress=100, error=message)
+        raise HTTPException(status_code=504, detail=message) from exc
     except PipelineError as exc:
         _update_task_job(task_id or None, status="error", progress=100, error=str(exc))
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -1295,12 +1343,14 @@ async def analyze_uploaded_content(
 
 @app.get("/api/tasks", include_in_schema=False)
 async def list_task_jobs() -> dict[str, Any]:
+    _expire_stale_task_jobs()
     with TASKS_LOCK:
         return {"items": list(TASK_JOBS.values())}
 
 
 @app.get("/api/tasks/{task_id}", include_in_schema=False)
 async def get_task_job(task_id: str) -> dict[str, Any]:
+    _expire_stale_task_jobs()
     with TASKS_LOCK:
         item = TASK_JOBS.get(task_id)
         if not item:
@@ -1339,23 +1389,18 @@ async def delete_task_job(task_id: str) -> dict[str, str]:
 @app.get("/api/videos", response_model=StoredVideoList)
 async def list_videos(limit: int = 100) -> StoredVideoList:
     safe_limit = min(max(limit, 1), 500)
-    items = cache.list(safe_limit)
+    items = await asyncio.to_thread(cache.list, safe_limit)
     for item in items:
         result = item.get("result")
         if isinstance(result, dict):
             _ensure_cleaned_article(result)
             _ensure_payload_request_timings(result)
-    await asyncio.gather(*(
-        _stabilize_payload_thumbnail(item["result"])
-        for item in items
-        if isinstance(item.get("result"), dict)
-    ))
     return StoredVideoList.model_validate({"items": items, "total": len(items)})
 
 
 @app.delete("/api/videos/{cache_key}", response_model=DeleteResponse)
 async def delete_video(cache_key: str) -> DeleteResponse:
-    deleted = cache.delete(cache_key)
+    deleted = await asyncio.to_thread(cache.delete, cache_key)
     if not deleted:
         raise HTTPException(status_code=404, detail="缓存记录不存在")
     return DeleteResponse(deleted=deleted)
@@ -1363,4 +1408,4 @@ async def delete_video(cache_key: str) -> DeleteResponse:
 
 @app.delete("/api/videos", response_model=DeleteResponse)
 async def clear_videos() -> DeleteResponse:
-    return DeleteResponse(deleted=cache.clear())
+    return DeleteResponse(deleted=await asyncio.to_thread(cache.clear))

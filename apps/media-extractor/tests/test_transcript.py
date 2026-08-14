@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 
 from app.cache import ResultCache
+from app.config import Settings
 from app.mimo import (
     MimoError,
     STRUCTURED_INFORMATION_SCHEMA,
@@ -922,3 +923,17 @@ def test_local_structured_fallback_is_valid_and_deduplicated() -> None:
     assert result.content_topic == "产品发布消息"
     assert result.atomic_claims == []
     assert result.implicit_opinions == []
+
+
+def test_local_structured_fallback_bounds_long_titles_to_schema_limit() -> None:
+    result = _local_structured_information(
+        "正文",
+        "很长的视频标题" * 40,
+        "https://www.douyin.com/video/long-title",
+    )
+
+    assert len(result.content_topic) == 200
+
+
+def test_default_duration_limit_is_40_minutes_for_all_platform_videos() -> None:
+    assert Settings().max_duration_seconds == 40 * 60

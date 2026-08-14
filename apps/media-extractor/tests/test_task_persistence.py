@@ -146,7 +146,33 @@ def test_markdown_export_uses_project_download_rules(
     assert first_path.name == "Harness_Agent _ 实践.md"
     assert second_path.name == "Harness_Agent _ 实践-2.md"
     assert first_path.read_text(encoding="utf-8") == payload["content"]
-    assert first_path.parent.name == "Harness_Agent _ 实践"
+    assert first_path.parent == tmp_path / "docs"
+
+
+def test_stale_active_task_is_failed_instead_of_running_forever(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(main_module, "TASKS_FILE", tmp_path / "tasks.json")
+    monkeypatch.setattr(main_module.settings, "task_stale_seconds", 60)
+    main_module.TASK_JOBS.clear()
+    main_module.TASK_JOBS["stale"] = {
+        "id": "stale", "status": "running", "progress": 40,
+        "started_at": 100, "updated_at": 100,
+    }
+
+    assert main_module._expire_stale_task_jobs(now=161) == 1
+    assert main_module.TASK_JOBS["stale"]["status"] == "error"
+    assert "自动结束" in main_module.TASK_JOBS["stale"]["error"]
+
+
+def test_history_listing_does_not_wait_for_remote_thumbnail(monkeypatch) -> None:
+    payload = {"items": [], "total": 0}
+    monkeypatch.setattr(main_module.cache, "list", lambda _limit: [])
+
+    response = TestClient(main_module.app).get("/api/videos")
+
+    assert response.status_code == 200
+    assert response.json() == payload
 
 
 def test_article_quality_detects_summary_like_output() -> None:

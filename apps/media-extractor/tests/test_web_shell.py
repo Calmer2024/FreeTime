@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 from fastapi.testclient import TestClient
 
 from app.main import app
+import app.main as main_module
 
 
 def test_index_prevents_stale_frontend_bundle() -> None:
@@ -21,6 +23,90 @@ def test_index_prevents_stale_frontend_bundle() -> None:
     assert "/extractor-static/app.css?v=" in extractor.text
     assert "/extractor-static/app.js?v=" in extractor.text
     assert "/extractor-static/task-ui.js?v=" in extractor.text
+    versions = re.findall(r"/extractor-static/[^?]+\?v=([a-f0-9]{12})", extractor.text)
+    assert len(versions) == 3
+    assert len(set(versions)) == 1
+
+
+def test_saved_mimo_key_updates_runtime_configuration(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(main_module, "SETTINGS_FILE", tmp_path / "settings.json")
+    previous_key = main_module.settings.mimo_api_key
+    previous_model = main_module.settings.summary_model
+    try:
+        response = TestClient(app).post(
+            "/api/settings",
+            json={
+                "lastProvider": "mimo",
+                "mimo": {"apiKey": "saved-mimo-key", "model": "mimo-2.5"},
+            },
+        )
+
+        assert response.status_code == 200
+        assert main_module.settings.mimo_api_key == "saved-mimo-key"
+        assert main_module.settings.summary_model == "mimo-v2.5"
+    finally:
+        object.__setattr__(main_module.settings, "mimo_api_key", previous_key)
+        object.__setattr__(main_module.settings, "summary_model", previous_model)
+
+
+def test_unexpected_analysis_failure_is_returned_as_json(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(main_module, "TASKS_FILE", tmp_path / "tasks.json")
+    main_module.TASK_JOBS.clear()
+    monkeypatch.setattr(
+        main_module,
+        "resolve_content_input",
+        lambda *_args, **_kwargs: "https://www.douyin.com/video/1",
+    )
+
+    async def fail_analysis(*_args, **_kwargs):
+        raise RuntimeError("unexpected extractor failure")
+
+    monkeypatch.setattr(main_module, "analyze", fail_analysis)
+    response = TestClient(app, raise_server_exceptions=False).post(
+        "/api/analyze",
+        json={
+            "url": "https://www.douyin.com/video/1",
+            "input_kind": "platform",
+            "refresh": True,
+            "task_id": "json-error-test",
+        },
+    )
+
+    assert response.status_code == 500
+    assert response.headers["content-type"].startswith("application/json")
+    assert "unexpected extractor failure" in response.json()["detail"]
+
+
+def test_platform_failure_is_not_masked_by_article_fallback(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(main_module, "TASKS_FILE", tmp_path / "tasks.json")
+    main_module.TASK_JOBS.clear()
+    monkeypatch.setattr(
+        main_module,
+        "resolve_content_input",
+        lambda *_args, **_kwargs: "https://www.douyin.com/video/1",
+    )
+
+    async def fail_platform(*_args, **_kwargs):
+        raise main_module.PipelineError("视频时长超过平台处理限制")
+
+    async def fail_article(*_args, **_kwargs):
+        raise main_module.PipelineError("页面未提取到足够的文章正文")
+
+    monkeypatch.setattr(main_module, "analyze", fail_platform)
+    monkeypatch.setattr(main_module, "analyze_article_url", fail_article)
+    response = TestClient(app).post(
+        "/api/analyze",
+        json={"url": "https://v.douyin.com/example/", "refresh": True},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "视频时长超过平台处理限制"
 
 
 def test_completed_verification_is_part_of_video_response(monkeypatch) -> None:

@@ -12,7 +12,7 @@ from app.storage import cache_root, data_root
 load_dotenv()
 
 
-@dataclass(frozen=True)
+@dataclass
 class Settings:
     data_dir: Path = data_root()
     cache_dir: Path = cache_root()
@@ -23,7 +23,7 @@ class Settings:
     summary_model: str = os.getenv("MIMO_SUMMARY_MODEL", "mimo-v2.5")
     asr_model: str = os.getenv("MIMO_ASR_MODEL", "mimo-v2.5-asr")
     max_duration_seconds: int = int(
-        os.getenv("MAX_VIDEO_DURATION_SECONDS", "1800")
+        os.getenv("MAX_VIDEO_DURATION_SECONDS", "2400")
     )
     max_transcript_chars: int = int(os.getenv("MAX_TRANSCRIPT_CHARS", "50000"))
     cache_ttl_seconds: int = int(os.getenv("CACHE_TTL_SECONDS", "86400"))
@@ -61,6 +61,22 @@ class Settings:
         os.getenv("FULL_VISUAL_ESCALATION", "true").strip().lower()
         in {"1", "true", "yes", "on"}
     )
+    task_timeout_seconds: int = int(os.getenv("TASK_TIMEOUT_SECONDS", "1800"))
+    task_stale_seconds: int = int(os.getenv("TASK_STALE_SECONDS", "2100"))
 
 
 settings = Settings()
+
+
+def apply_saved_settings(payload: dict[str, object]) -> None:
+    """Apply FreeTime's persisted provider settings to the live backend."""
+    mimo = payload.get("mimo")
+    if not isinstance(mimo, dict):
+        return
+    settings.mimo_api_key = str(mimo.get("apiKey") or "").strip()
+    model = str(mimo.get("model") or "").strip()
+    if model:
+        settings.summary_model = {
+            "mimo-2.5": "mimo-v2.5",
+            "mimo-2.5-pro": "mimo-v2.5",
+        }.get(model, model)
