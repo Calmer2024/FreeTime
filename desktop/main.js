@@ -1,10 +1,15 @@
 const { app, BrowserWindow, Menu, shell, screen } = require("electron");
 const { spawn } = require("child_process");
+const { createSafeLogger } = require("./safe-logger");
 const fs = require("fs");
 const path = require("path");
 const http = require("http");
 const { getLoopbackUrl, resolveBackendDir, resolvePortFile } = require("./backend-paths");
 const { fitBoundsToWorkArea, getDisplayWindowMetrics } = require("./window-layout");
+const { autoUpdater } = require("electron-updater");
+
+// Electron GUI 打包环境中的 stdout/stderr 可能在父进程退出后断开，统一通过安全日志写入。
+const logger = createSafeLogger(process.stdout, process.stderr);
 
 const DEV_MODE = !app.isPackaged;
 const DEFAULT_PORT = 8000;
@@ -20,6 +25,18 @@ let displaySyncTimer = null;
 let PORT = DEFAULT_PORT;
 let BASE_URL = getLoopbackUrl(PORT);
 
+function setupSilentUpdates() {
+  if (DEV_MODE) return;
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.allowDowngrade = false;
+  autoUpdater.logger = logger;
+  autoUpdater.on("update-available", info => logger.log(`[Update] 发现新版本 ${info.version}，后台下载`));
+  autoUpdater.on("update-downloaded", info => logger.log(`[Update] ${info.version} 已就绪，将在退出时静默安装`));
+  autoUpdater.on("error", error => logger.warn(`[Update] 检查或下载失败: ${error.message}`));
+  autoUpdater.checkForUpdates().catch(error => logger.warn(`[Update] 检查失败: ${error.message}`));
+}
+
 // ========== 端口管理 ==========
 
 function readPortFromFile() {
@@ -32,7 +49,7 @@ function readPortFromFile() {
       if (port > 0 && port < 65536) {
         PORT = port;
         BASE_URL = getLoopbackUrl(PORT);
-        console.log(`[Port] 读取端口: ${PORT}`);
+        logger.log(`[Port] 读取端口: ${PORT}`);
         return true;
       }
     }
@@ -62,7 +79,7 @@ function getBackendExePath() {
 function startPythonBackend() {
   const exePath = getBackendExePath();
   if (!exePath) {
-    console.log("[Dev] 跳过 Python 启动（开发模式）");
+    logger.log("[Dev] 跳过 Python 启动（开发模式）");
     return Promise.resolve();
   }
 
@@ -71,11 +88,11 @@ function startPythonBackend() {
     try {
       fs.rmSync(portFile, { force: true });
     } catch (e) {
-      console.warn(`[Port] 无法移除旧端口文件: ${e.message}`);
+      logger.warn(`[Port] 无法移除旧端口文件: ${e.message}`);
     }
 
-    console.log(`[Backend] 启动 Python 后端: ${exePath}`);
-    console.log(`[Backend] 工作目录: ${getBackendDir()}`);
+    logger.log(`[Backend] 启动 Python 后端: ${exePath}`);
+    logger.log(`[Backend] 工作目录: ${getBackendDir()}`);
 
     pythonProcess = spawn(exePath, [], {
       cwd: getBackendDir(),
@@ -94,25 +111,25 @@ function startPythonBackend() {
 
     pythonProcess.stdout.on("data", (data) => {
       const line = data.toString().trim();
-      console.log(`[Backend] ${line}`);
+      logger.log(`[Backend] ${line}`);
       // 从输出中提取端口号
       const portMatch = line.match(/端口:\s*(\d+)/);
       if (portMatch) {
         PORT = parseInt(portMatch[1], 10);
         BASE_URL = getLoopbackUrl(PORT);
         portDiscovered = true;
-        console.log(`[Port] 检测到端口: ${PORT}`);
+        logger.log(`[Port] 检测到端口: ${PORT}`);
       }
     });
 
     pythonProcess.stderr.on("data", (data) => {
       const message = data.toString().trim();
       errorTail = `${errorTail}\n${message}`.trim().slice(-1200);
-      console.log(`[Backend] ${message}`);
+      logger.log(`[Backend] ${message}`);
     });
 
     pythonProcess.on("error", (err) => {
-      console.error("[Backend] 启动失败:", err.message);
+      logger.error("[Backend] 启动失败:", err.message);
       if (!settled) {
         settled = true;
         reject(err);
@@ -120,7 +137,7 @@ function startPythonBackend() {
     });
 
     pythonProcess.on("close", (code) => {
-      console.log(`[Backend] 进程退出, code=${code}`);
+      logger.log(`[Backend] 进程退出, code=${code}`);
       pythonProcess = null;
       if (!settled) {
         settled = true;
@@ -137,7 +154,7 @@ function startPythonBackend() {
       .then(() => {
         if (settled) return;
         settled = true;
-        console.log("[Backend] 后端已就绪");
+        logger.log("[Backend] 后端已就绪");
         resolve();
       })
       .catch((err) => {
@@ -187,7 +204,7 @@ function waitForBackend(timeoutMs = 30000, isPortReady = () => true) {
 
 function stopPythonBackend() {
   if (pythonProcess) {
-    console.log("[Backend] 正在关闭 Python 后端...");
+    logger.log("[Backend] 正在关闭 Python 后端...");
     if (process.platform === "win32") {
       try {
         pythonProcess.kill("SIGINT");
@@ -334,6 +351,7 @@ function loadMainPage() {
 app.whenReady().then(async () => {
   // 移除菜单栏
   Menu.setApplicationMenu(null);
+  setupSilentUpdates();
 
   // 尝试从文件读取端口
   readPortFromFile();
@@ -354,7 +372,7 @@ app.whenReady().then(async () => {
     // Only navigate to the backend after it has passed the health check.
     loadMainPage();
   } catch (err) {
-    console.error("[App] 后端启动失败:", err.message);
+    logger.error("[App] 后端启动失败:", err.message);
     // 显示错误页面
     if (mainWindow) {
       mainWindow.loadURL("data:text/html," + encodeURIComponent(
