@@ -1,5 +1,7 @@
 # Environment
 .env
+.env.local
+.env.*.local
 .venv/
 venv/
 ENV/
@@ -11,6 +13,11 @@ __pycache__/
 *.pyc
 *.pyo
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
 
 # Cache
 .cache/
@@ -28,10 +35,12 @@ cookies*.txt
 *.swp
 *.swo
 *~
+.claude/
 
 # OS
 .DS_Store
 Thumbs.db
+*.tmp
 
 # Build
 dist/
@@ -53,3 +62,6 @@ desktop/release2/
 
 # Logs
 *.log
+
+# Application-local configuration
+apps/chaoxing-auto/config.json

@@ -7,7 +7,7 @@
 ```
 chaoxing-auto/
 ├── main.py            # 入口，编排流程
-├── config.json         # 课程 URL/名称、倍速配置
+├── config.example.json # 配置模板；复制为 config.json 后填写本地课程信息
 ├── auth.py             # 登录 + session 持久化
 ├── course.py           # 课程导航，任务列表
 ├── player.py           # 播放器状态机
