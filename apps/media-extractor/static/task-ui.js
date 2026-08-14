@@ -40,6 +40,13 @@
     return { active, completed, total: records.length, visible: records.length > 0 };
   }
 
+  function taskStartMessage(count) {
+    const taskCount = Math.max(1, Number(count || 1));
+    return taskCount === 1
+      ? "任务已开始，正在提取"
+      : `${taskCount} 个任务已开始，正在并行提取`;
+  }
+
   function canClearCompletedTasks(tasks) {
     return (Array.isArray(tasks) ? tasks : []).some(isTerminalTask);
   }
@@ -66,6 +73,45 @@
       item?.created_at || "",
       Boolean(item?.expired),
     ].join(":")).join("|");
+  }
+
+  function classifyHistoryItem(item) {
+    const result = item?.result || {};
+    const metadata = result.metadata || {};
+    const source = String(metadata.platform || "未知来源");
+    const typeLabels = {
+      video: "视频", image_carousel: "图文", article: "文章", upload_bundle: "本地材料",
+    };
+    return { source, type: typeLabels[metadata.content_type] || "其他" };
+  }
+
+  function filterHistoryItems(items, query = "", source = "全部来源", type = "全部类型") {
+    const needle = String(query || "").trim().toLocaleLowerCase();
+    return (Array.isArray(items) ? items : []).filter(item => {
+      const classification = classifyHistoryItem(item);
+      const result = item?.result || {};
+      const searchable = [
+        result.metadata?.title, result.metadata?.uploader, result.metadata?.webpage_url,
+        result.summary, ...(result.topics || []), classification.source, classification.type,
+      ].filter(Boolean).join(" ").toLocaleLowerCase();
+      return (!needle || searchable.includes(needle))
+        && (source === "全部来源" || classification.source === source)
+        && (type === "全部类型" || classification.type === type);
+    });
+  }
+
+  async function readResponsePayload(response) {
+    const text = await response.text();
+    if (!text) return {};
+    try {
+      return JSON.parse(text);
+    } catch (_error) {
+      return {
+        detail: response.ok
+          ? "服务器返回了无法解析的数据"
+          : `服务器请求失败（${response.status}）：${text.slice(0, 200)}`,
+      };
+    }
   }
 
   function taskActionState(task, confirmationTaskId) {
@@ -136,11 +182,15 @@
     createResultPresentation,
     isTerminalTask,
     summarizeTasks,
+    taskStartMessage,
     canClearCompletedTasks,
     withoutCompletedTasks,
     taskClearActionKey,
     historyScrollTarget,
     historyItemsSignature,
+    classifyHistoryItem,
+    filterHistoryItems,
+    readResponsePayload,
     taskActionState,
     taskErrorMessage,
     buildMarkdownExportPayload,

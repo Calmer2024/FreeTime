@@ -15,7 +15,28 @@ const {
   withoutCompletedTasks,
   taskClearActionKey,
   historyItemsSignature,
+  classifyHistoryItem,
+  filterHistoryItems,
+  readResponsePayload,
+  taskStartMessage,
 } = require("./task-ui.js");
+
+test("task submission feedback reports accepted task count", () => {
+  assert.equal(taskStartMessage(1), "任务已开始，正在提取");
+  assert.equal(taskStartMessage(3), "3 个任务已开始，正在并行提取");
+});
+
+test("plain-text server failures are converted into a readable error payload", async () => {
+  assert.equal(typeof readResponsePayload, "function");
+  const payload = await readResponsePayload({
+    ok: false,
+    status: 500,
+    text: async () => "Internal Server Error",
+  });
+  assert.deepEqual(payload, {
+    detail: "服务器请求失败（500）：Internal Server Error",
+  });
+});
 
 test("only the first completion claims automatic result presentation", () => {
   const state = createResultPresentation();
@@ -199,4 +220,12 @@ test("history signature changes only when rendered history changes", () => {
     historyItemsSignature([{ cache_key: "a", created_at: 11, expired: false }]),
     "a:11:false",
   );
+});
+
+test("history is classified and searchable by source and type", () => {
+  const items = [{ result: { metadata: { title: "咖啡教程", platform: "抖音", content_type: "video" }, topics: ["手冲"] } }];
+  assert.deepEqual(classifyHistoryItem(items[0]), { source: "抖音", type: "视频" });
+  assert.equal(filterHistoryItems(items, "手冲").length, 1);
+  assert.equal(filterHistoryItems(items, "", "小红书").length, 0);
+  assert.equal(filterHistoryItems(items, "", "全部来源", "视频").length, 1);
 });

@@ -6,7 +6,7 @@
   <meta name="description" content="DrillKnowledge - 深度知识提取工具">
   <title>DrillKnowledge - FreeTime</title>
   <link rel="icon" type="image/png" href="/static/icon_freetime.png">
-  <link rel="stylesheet" href="/extractor-static/app.css?v=1.0.15">
+  <link rel="stylesheet" href="/extractor-static/app.css?v=__ASSET_VERSION__">
   <style>
     /* 重置原生浏览器样式 */
     input, select, button, textarea {
@@ -502,6 +502,8 @@
         </div>
       </div>
     </header>
+    <div class="task-start-notice" id="task-start-notice" role="status"
+      aria-live="polite" hidden></div>
 
     <!-- 主内容区域 -->
     <main class="dk-content" id="content-scroll">
@@ -539,6 +541,7 @@
               <div class="media-gallery" id="media-gallery" hidden></div>
               <div class="eyebrow" id="platform"></div>
               <h1 class="video-title" id="video-title"></h1>
+              <a class="source-link" id="source-link" href="#" target="_blank" rel="noopener noreferrer" hidden><i data-lucide="external-link" aria-hidden="true"></i><span>打开原视频</span></a>
               <div class="meta" id="meta"></div>
               <button class="copy-button" id="copy-content" type="button" aria-label="一键复制内容">
                 <i data-lucide="copy" aria-hidden="true"></i>
@@ -705,6 +708,9 @@
             <div><i class="section-icon" data-lucide="history" aria-hidden="true"></i><h2>最近提取</h2></div>
           </div>
           <div class="history-actions-head">
+            <label class="history-search"><i data-lucide="search" aria-hidden="true"></i><span class="sr-only">搜索最近提取</span><input id="history-search" type="search" placeholder="搜索记录" autocomplete="off"></label>
+            <select class="history-filter" id="history-source-filter" aria-label="按来源筛选"><option>全部来源</option></select>
+            <select class="history-filter" id="history-type-filter" aria-label="按类型筛选"><option>全部类型</option></select>
             <button class="icon-button history-toggle" id="toggle-history" type="button" aria-label="折叠最近提取" title="折叠最近提取"><i data-lucide="chevron-up" aria-hidden="true"></i></button>
             <button class="icon-button danger-quiet tooltip" id="clear-history" type="button" aria-label="清空全部缓存" data-tooltip="清空全部缓存"><i data-lucide="trash-2" aria-hidden="true"></i></button>
           </div>
@@ -727,8 +733,8 @@
   </div>
 
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
-  <script src="/extractor-static/task-ui.js?v=1.0.15"></script>
-  <script src="/extractor-static/app.js?v=1.0.15"></script>
+  <script src="/extractor-static/task-ui.js?v=__ASSET_VERSION__"></script>
+  <script src="/extractor-static/app.js?v=__ASSET_VERSION__"></script>
   <script>
     // 自定义下拉框 - 模式选择
     const modeDropdown = document.getElementById('modeDropdown');

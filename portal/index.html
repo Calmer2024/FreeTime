@@ -108,14 +108,13 @@
               <label>Model</label>
               <div class="custom-select small" id="mimoModelSelect">
                 <div class="select-trigger">
-                  <span class="model-name" id="mimoModelName">mimo-2.5-pro</span>
+                  <span class="model-name" id="mimoModelName">mimo-v2.5</span>
                   <svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="6 9 12 15 18 9"/>
                   </svg>
                 </div>
                 <div class="select-dropdown">
-                  <div class="select-option active" data-value="mimo-2.5-pro">mimo-2.5-pro</div>
-                  <div class="select-option" data-value="mimo-2.5">mimo-2.5</div>
+                  <div class="select-option active" data-value="mimo-v2.5">mimo-v2.5</div>
                 </div>
               </div>
             </div>
@@ -386,7 +385,7 @@
       document.getElementById('deepseekKey').value = config.deepseek?.apiKey || '';
       document.getElementById('deepseekModelName').textContent = config.deepseek?.model || 'deepseek-v4-pro';
       document.getElementById('mimoKey').value = config.mimo?.apiKey || '';
-      document.getElementById('mimoModelName').textContent = config.mimo?.model || 'mimo-2.5-pro';
+      document.getElementById('mimoModelName').textContent = config.mimo?.model || 'mimo-v2.5';
 
       // 恢复服务商选择
       if (config.lastProvider) {

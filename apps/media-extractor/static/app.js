@@ -5,6 +5,7 @@ const coverageStatusLabels = { structured_ready: "已完成", partial: "部分�
 let clock;
 let refreshNext = false;
 let historyByKey = {};
+let historyItems = [];
 let currentResult = null;
 let currentCacheKey = null;
 let currentArticleView = "polished";
@@ -12,6 +13,7 @@ let taskSequence = 0;
 let taskRecords = [];
 const TASK_STORAGE_KEY = "drillknowledge.tasks.v2";
 let taskPollTimer = null;
+let taskStartNoticeTimer = null;
 let taskDeleteConfirmationId = null;
 let taskClearConfirmation = false;
 let taskClearError = "";
@@ -44,6 +46,9 @@ $("toggle-history")?.addEventListener("click", () => {
   $("toggle-history").setAttribute("aria-label", collapsed ? "展开最近提取" : "折叠最近提取");
   $("toggle-history").title = collapsed ? "展开最近提取" : "折叠最近提取";
 });
+$("history-search")?.addEventListener("input", renderHistoryItems);
+$("history-source-filter")?.addEventListener("change", renderHistoryItems);
+$("history-type-filter")?.addEventListener("change", renderHistoryItems);
 
 // 一键复制功能
 function copyToClipboard(text, button) {
@@ -166,6 +171,7 @@ $("form").addEventListener("submit", async (event) => {
   $("url").value = "";
   persistTasks();
   renderTaskQueue();
+  showTaskStartNotice(newTasks.length);
   $("loading-label").textContent = routes.length > 1
     ? `正在并行处理 ${routes.length} 个任务`
     : routes[0].kind === "text" ? "正在分析文字" : $("mode").value === "visual" ? "正在提取全模态内容" : "正在提取内容";
@@ -186,27 +192,44 @@ $("form").addEventListener("submit", async (event) => {
   }
 });
 
+function showTaskStartNotice(taskCount) {
+  const notice = $("task-start-notice");
+  if (!notice) return;
+  clearTimeout(taskStartNoticeTimer);
+  notice.textContent = DrillTaskUi.taskStartMessage(taskCount);
+  notice.hidden = false;
+  requestAnimationFrame(() => notice.classList.add("is-visible"));
+  taskStartNoticeTimer = setTimeout(() => {
+    notice.classList.remove("is-visible");
+    setTimeout(() => { notice.hidden = true; }, 180);
+  }, 2400);
+}
+
 async function runTask(task) {
   task.status = "running";
   task.progress = Math.max(8, task.progress || 0);
   persistTasks();
   renderTaskQueue();
+  let requestTimeout = null;
   try {
+    const controller = new AbortController();
+    requestTimeout = setTimeout(() => controller.abort(), 35 * 60 * 1000);
     let response;
     if (task.route.kind === "text") {
       const body = new FormData();
       body.append("title", task.route.text.slice(0, 200));
       body.append("text", task.route.text);
       body.append("task_id", task.id);
-      response = await fetch("/api/analyze/upload", { method: "POST", body });
+      response = await fetch("/api/analyze/upload", { method: "POST", body, signal: controller.signal });
     } else {
       response = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: task.route.url, input_kind: "auto", mode: task.mode || "auto", refresh: Boolean(task.refresh), task_id: task.id })
+        body: JSON.stringify({ url: task.route.url, input_kind: "auto", mode: task.mode || "auto", refresh: Boolean(task.refresh), task_id: task.id }),
+        signal: controller.signal,
       });
     }
-    const data = await response.json();
+    const data = await DrillTaskUi.readResponsePayload(response);
     if (!response.ok) throw new Error(data.detail || "提取失败");
     task.status = "success";
     task.progress = 100;
@@ -219,9 +242,11 @@ async function runTask(task) {
     task.status = "error";
     task.progress = 100;
     task.completedAt = Date.now();
-    task.error = error.message || "提取失败";
+    task.error = error.name === "AbortError" ? "任务长时间无响应，已自动结束，请重试" : (error.message || "提取失败");
     persistTasks();
     renderTaskQueue();
+  } finally {
+    clearTimeout(requestTimeout);
   }
 }
 
@@ -507,6 +532,14 @@ function render(data) {
   showThumbnail(meta.thumbnail, meta.title);
   $("platform").textContent = meta.platform;
   $("video-title").textContent = meta.title;
+  const sourceLink = $("source-link");
+  const sourceUrl = extractValidHttpUrl(meta.webpage_url);
+  if (sourceLink) {
+    sourceLink.hidden = !sourceUrl;
+    sourceLink.href = sourceUrl || "#";
+    const label = sourceLink.querySelector("span");
+    if (label) label.textContent = meta.content_type === "video" ? "打开原视频" : "打开原内容";
+  }
   const mediaSize = meta.content_type === "article"
     ? "文章"
     : meta.content_type === "upload_bundle"
@@ -718,25 +751,58 @@ async function loadHistory({ resetScroll = false } = {}) {
     const historySignature = DrillTaskUi.historyItemsSignature(data.items);
     if (!data.items.length) {
       historyByKey = {};
+      historyItems = [];
+      updateHistoryFilters([]);
       list.dataset.signature = historySignature;
       list.innerHTML = '<div class="history-empty">暂无提取记录</div>';
       list.scrollTop = 0;
       return;
     }
-    historyByKey = Object.fromEntries(data.items.map(item => [item.cache_key, item.result]));
-    if (list.dataset.signature === historySignature) {
+    historyItems = data.items;
+    historyByKey = Object.fromEntries(historyItems.map(item => [item.cache_key, item.result]));
+    updateHistoryFilters(historyItems);
+    if (list.dataset.signature === historySignature && !resetScroll) {
+      renderHistoryItems();
       if (resetScroll) list.scrollTop = 0;
       return;
     }
     list.dataset.signature = historySignature;
-    list.innerHTML = data.items.map(item => {
+    renderHistoryItems({ resetScroll, previousScrollTop });
+  } catch (error) {
+    list.innerHTML = `<div class="history-empty">${escapeHtml(error.message)}</div>`;
+  }
+}
+
+function updateHistoryFilters(items) {
+  const sources = [...new Set(items.map(item => DrillTaskUi.classifyHistoryItem(item).source))].sort();
+  const types = [...new Set(items.map(item => DrillTaskUi.classifyHistoryItem(item).type))].sort();
+  [["history-source-filter", "全部来源", sources], ["history-type-filter", "全部类型", types]].forEach(([id, all, values]) => {
+    const select = $(id); if (!select) return;
+    const selected = select.value || all;
+    select.innerHTML = [all, ...values].map(value => `<option${value === selected ? " selected" : ""}>${escapeHtml(value)}</option>`).join("");
+  });
+}
+
+function renderHistoryItems(options = {}) {
+  const list = $("history-list");
+  if (!list) return;
+  const previousScrollTop = options.previousScrollTop ?? list.scrollTop;
+  const items = DrillTaskUi.filterHistoryItems(
+    historyItems, $("history-search")?.value, $("history-source-filter")?.value, $("history-type-filter")?.value,
+  );
+  if (!items.length) {
+    list.innerHTML = `<div class="history-empty">${historyItems.length ? "没有匹配的记录" : "暂无提取记录"}</div>`;
+    return;
+  }
+  list.innerHTML = items.map(item => {
       const result = item.result;
       const date = new Date(item.created_at).toLocaleString("zh-CN");
       const coverage = result.coverage || {};
+      const classification = DrillTaskUi.classifyHistoryItem(item);
       return `<div class="history-item">
         <div>
           <p class="history-title">${escapeHtml(result.metadata.title)}</p>
-          <div class="history-meta">${escapeHtml(result.metadata.platform)} / ${escapeHtml(strategyLabels[result.strategy] || result.strategy)} / ${escapeHtml(coverageStatusLabels[coverage.status] || coverage.status || "未知")} / ${escapeHtml(date)}${item.expired ? " / 已过期" : ""}</div>
+          <div class="history-meta"><span class="history-tags"><span class="history-tag">${escapeHtml(classification.source)}</span><span class="history-tag">${escapeHtml(classification.type)}</span></span>${escapeHtml(strategyLabels[result.strategy] || result.strategy)} / ${escapeHtml(coverageStatusLabels[coverage.status] || coverage.status || "未知")} / ${escapeHtml(date)}${item.expired ? " / 已过期" : ""}</div>
         </div>
         <div class="history-actions">
           <button type="button" onclick="viewStored('${item.cache_key}')"><i data-lucide="eye" aria-hidden="true"></i>查看</button>
@@ -749,12 +815,9 @@ async function loadHistory({ resetScroll = false } = {}) {
       previousScrollTop,
       list.scrollHeight,
       list.clientHeight,
-      resetScroll,
+      Boolean(options.resetScroll),
     );
     refreshIcons();
-  } catch (error) {
-    list.innerHTML = `<div class="history-empty">${escapeHtml(error.message)}</div>`;
-  }
 }
 
 async function deleteVideo(cacheKey, trigger) {
@@ -852,7 +915,7 @@ function renderRawSource(source) {
   const blocks = text.split(/\n\s*\n/).map(block => block.trim()).filter(Boolean);
   target.innerHTML = blocks.map(block => {
     const lines = block.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-    return `<p>${lines.map(escapeHtml).join("<br>")}</p>`;
+    return `<p>${lines.map(line => linkifyPlainUrls(escapeHtml(line))).join("<br>")}</p>`;
   }).join("");
 }
 
@@ -913,12 +976,23 @@ function renderMarkdown(markdown) {
 
 function renderInlineMarkdown(value) {
   let text = escapeHtml(value);
+  const links = [];
+  text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_match, label, url) => {
+    const token = `\u0000LINK${links.length}\u0000`;
+    links.push(`<a href="${escapeAttribute(url)}" target="_blank" rel="noopener noreferrer">${label}</a>`);
+    return token;
+  });
+  text = linkifyPlainUrls(text);
   text = text.replace(/`([^`]+)`/g, "<code>$1</code>");
-  text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
   text = text.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   text = text.replace(/__([^_]+)__/g, "<strong>$1</strong>");
   text = text.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, "<em>$1</em>");
+  links.forEach((link, index) => { text = text.replace(`\u0000LINK${index}\u0000`, link); });
   return text;
+}
+
+function linkifyPlainUrls(escapedText) {
+  return escapedText.replace(/https?:\/\/[^\s<]+/g, url => `<a href="${escapeAttribute(url)}" target="_blank" rel="noopener noreferrer">${url}</a>`);
 }
 
 function organizeSourceText(source) {
