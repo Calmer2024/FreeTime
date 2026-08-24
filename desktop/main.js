@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, shell, screen } = require("electron");
+const { app, BrowserWindow, Menu, shell, screen, ipcMain, nativeImage } = require("electron");
 const { spawn } = require("child_process");
 const { createSafeLogger } = require("./safe-logger");
 const fs = require("fs");
@@ -24,6 +24,36 @@ let currentDisplayId = null;
 let displaySyncTimer = null;
 let PORT = DEFAULT_PORT;
 let BASE_URL = getLoopbackUrl(PORT);
+
+function taskbarBadgeImage(count) {
+  const label = count > 99 ? "99+" : String(count);
+  const fontSize = label.length > 2 ? 10 : 14;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="22" cy="10" r="9" fill="#25252a" stroke="#fff" stroke-width="2"/><text x="22" y="10" fill="#fff" font-family="Segoe UI,Arial,sans-serif" font-size="${fontSize}" font-weight="700" text-anchor="middle" dominant-baseline="central">${label}</text></svg>`;
+  return nativeImage.createFromDataURL(`data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`);
+}
+
+function setTaskbarBadge(count) {
+  if (!mainWindow || mainWindow.isDestroyed() || process.platform !== "win32") return;
+  const value = Math.max(0, Math.floor(Number(count) || 0));
+  mainWindow.setOverlayIcon(value ? taskbarBadgeImage(value) : null, value ? `${value} 个已结束任务` : "无已结束任务");
+}
+
+ipcMain.on("taskbar-badge", (_event, count) => setTaskbarBadge(count));
+
+ipcMain.handle("import-to-coolnote", async (_event, filePath) => {
+  if (process.platform !== "win32" || typeof filePath !== "string" || !filePath.trim()) {
+    throw new Error("当前系统不支持直接导入 CoolNote");
+  }
+  const candidates = [
+    process.env.COOLNOTE_EXE,
+    "D:\\soft\\Calmer\\CoolNote\\coolnote.exe",
+    path.join(process.env.LOCALAPPDATA || "", "CoolNote", "CoolNote.exe"),
+  ].filter(Boolean);
+  const executable = candidates.find(candidate => fs.existsSync(candidate));
+  if (!executable) throw new Error("未找到已安装的 CoolNote");
+  spawn(executable, [filePath], { detached: true, stdio: "ignore" }).unref();
+  return true;
+});
 
 function setupSilentUpdates() {
   if (DEV_MODE) return;

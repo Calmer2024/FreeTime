@@ -94,6 +94,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupDownloadThumbnail();
   setupDownloadExperience();
   setupMarkdownExport();
+  setupCoolNoteImport();
 });
 
 function extractValidHttpUrl(value) {
@@ -256,7 +257,11 @@ function renderTaskQueue() {
   const panel = $("task-queue");
   const list = $("task-list");
   const summary = DrillTaskUi.summarizeTasks(taskRecords);
+  window.electronAPI?.setTaskbarBadge?.(summary.completed);
   if (!summary.visible) {
+    taskDeleteConfirmationId = null;
+    taskClearConfirmation = false;
+    taskClearError = "";
     control.hidden = true;
     setTaskQueueExpanded(false);
     list.innerHTML = "";
@@ -267,8 +272,8 @@ function renderTaskQueue() {
   $("task-queue-summary").textContent = `${summary.active ? `${summary.active} 进行中 · ` : ""}${summary.completed}/${summary.total} 已结束`;
   renderTaskClearActions(summary);
   const badge = $("task-active-badge");
-  badge.hidden = summary.active === 0;
-  badge.textContent = summary.active > 9 ? "9+" : String(summary.active);
+  badge.hidden = summary.completed === 0;
+  badge.textContent = summary.completed > 9 ? "9+" : String(summary.completed);
   badge.classList.toggle("is-active", summary.active > 0);
   trigger.classList.toggle("has-active-tasks", summary.active > 0);
   const signature = taskRecords.map(task => [
@@ -395,6 +400,8 @@ async function deleteTaskRecord(taskId) {
     if (!response.ok) throw new Error(data.detail || "删除任务失败");
     taskRecords = taskRecords.filter(item => item.id !== taskId);
     taskDeleteConfirmationId = null;
+    taskClearConfirmation = false;
+    taskClearError = "";
     persistTasks();
     renderTaskQueue();
   } catch (error) {
@@ -539,6 +546,15 @@ function render(data) {
     sourceLink.href = sourceUrl || "#";
     const label = sourceLink.querySelector("span");
     if (label) label.textContent = meta.content_type === "video" ? "打开原视频" : "打开原内容";
+  }
+  const overviewSource = $("overview-source-section");
+  const overviewSourceLink = $("overview-source-link");
+  const overviewSourceUrl = $("overview-source-url");
+  if (overviewSource && overviewSourceLink && overviewSourceUrl) {
+    overviewSource.hidden = !sourceUrl;
+    overviewSourceLink.href = sourceUrl || "#";
+    overviewSourceLink.querySelector("span").textContent = meta.content_type === "video" ? "跳转原视频" : "跳转原内容";
+    overviewSourceUrl.textContent = sourceUrl;
   }
   const mediaSize = meta.content_type === "article"
     ? "文章"
@@ -859,6 +875,8 @@ function createInlineConfirmation(trigger, message) {
     trigger.dataset.inlineConfirm = "1";
     const icon = trigger.querySelector("[data-lucide]");
     const originalIcon = icon?.getAttribute("data-lucide") || "trash-2";
+    const originalLabel = trigger.getAttribute("aria-label") || "操作";
+    const originalTitle = trigger.getAttribute("title") || "";
     if (icon) icon.setAttribute("data-lucide", "check");
     trigger.setAttribute("aria-label", "确认操作");
     trigger.title = message;
@@ -866,8 +884,9 @@ function createInlineConfirmation(trigger, message) {
     const finish = value => {
       trigger.dataset.inlineConfirm = "0";
       if (icon) icon.setAttribute("data-lucide", originalIcon);
-      trigger.setAttribute("aria-label", "删除记录");
-      trigger.removeAttribute("title");
+      trigger.setAttribute("aria-label", originalLabel);
+      if (originalTitle) trigger.setAttribute("title", originalTitle);
+      else trigger.removeAttribute("title");
       refreshIcons();
       resolve(value);
     };
@@ -1141,6 +1160,28 @@ function setupMarkdownExport() {
     } catch (error) {
       setDownloadStatus("error", error.message || "Markdown 导出失败", "article-download-status");
       setDownloadButtonState(trigger, "error", "导出失败");
+    }
+  });
+}
+
+function setupCoolNoteImport() {
+  const trigger = $("import-article-coolnote");
+  trigger?.addEventListener("click", async () => {
+    const payload = DrillTaskUi.buildMarkdownExportPayload(currentResult);
+    if (!payload.content.trim()) return setDownloadStatus("error", "当前没有可导入的完整全文", "article-download-status");
+    if (!window.electronAPI?.importToCoolNote) return setDownloadStatus("error", "请在 FreeTime 桌面版中使用此功能", "article-download-status");
+    setDownloadButtonState(trigger, "loading", "导入中");
+    setDownloadStatus("loading", "正在准备 CoolNote 导入…", "article-download-status");
+    try {
+      const response = await fetch("/api/download/save-text", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "Markdown 导出失败");
+      await window.electronAPI.importToCoolNote(data.path);
+      setDownloadStatus("success", "已导出并交给 CoolNote 导入", "article-download-status");
+      setDownloadButtonState(trigger, "success", "已导入");
+    } catch (error) {
+      setDownloadStatus("error", error.message || "CoolNote 导入失败", "article-download-status");
+      setDownloadButtonState(trigger, "error", "导入失败");
     }
   });
 }

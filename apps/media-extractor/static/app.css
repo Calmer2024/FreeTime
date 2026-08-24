@@ -830,6 +830,8 @@ details[open] .summary-chevron { transform: rotate(180deg); }
 .task-queue-trigger:active { transform: scale(.96); }
 .task-queue-trigger svg { width: 17px; height: 17px; }
 .task-active-badge { position: absolute; top: -3px; right: -3px; min-width: 17px; height: 17px; display: grid; place-items: center; padding: 0 4px; border: 2px solid white; border-radius: 999px; color: white; background: var(--action); font: 700 9px/1 var(--font-mono); }
+.overview-source-url { margin: 0; color: var(--ink-tertiary); font: 11px/1.5 var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.overview-source-link { flex: 0 0 auto; }
 .task-active-badge.is-active::before { content: ""; position: absolute; inset: -3px; border: 1px solid rgba(29,29,31,.2); border-radius: inherit; animation: taskPulse 1.5s ease-out infinite; }
 @keyframes taskPulse { 0% { opacity: .65; transform: scale(.85); } 100% { opacity: 0; transform: scale(1.35); } }
 .task-start-notice { position: fixed; z-index: 1100; top: 76px; right: 28px; max-width: min(360px, calc(100vw - 32px)); padding: 9px 13px; border: 1px solid var(--line); border-radius: 10px; color: var(--ink-secondary); background: rgba(255,255,255,.97); box-shadow: 0 12px 34px rgba(24,26,23,.13); opacity: 0; transform: translateY(-5px); transition: opacity .18s ease, transform .18s ease; pointer-events: none; font-size: 11px; }

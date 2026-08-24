@@ -574,6 +574,13 @@
 
               <section class="result-view active" id="view-overview" role="tabpanel"
                 aria-labelledby="tab-overview" data-view-panel="overview">
+                <section class="view-section overview-source" id="overview-source-section" hidden>
+                  <div class="section-heading">
+                    <div><i class="section-icon" data-lucide="external-link" aria-hidden="true"></i><h2>原内容</h2></div>
+                    <a class="source-link overview-source-link" id="overview-source-link" href="#" target="_blank" rel="noopener noreferrer"><span>打开原视频</span><i data-lucide="arrow-up-right" aria-hidden="true"></i></a>
+                  </div>
+                  <p class="overview-source-url" id="overview-source-url"></p>
+                </section>
                 <section class="view-section overview-trace">
                   <div class="section-heading">
                     <div>
@@ -619,6 +626,10 @@
                   </div>
                   <div class="article-actions">
                     <span class="download-status" id="article-download-status" aria-live="polite" hidden></span>
+                    <button class="copy-button-sm" id="import-article-coolnote" type="button" aria-label="导入完整全文到 CoolNote">
+                      <i data-lucide="book-plus" aria-hidden="true"></i>
+                      <span>导入 CoolNote</span>
+                    </button>
                     <button class="copy-button-sm" id="export-article-md" type="button" aria-label="导出完整全文 Markdown 文件">
                       <i data-lucide="download" aria-hidden="true"></i>
                       <span>导出 .md</span>
